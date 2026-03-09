@@ -1,0 +1,3094 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>HostPanel</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ─── VARIABLEN (v1 Cyan-Theme) ────────────────────────────────── */
+:root{
+  --bg:#080c14;--bg2:#0d1220;--bg3:#111827;--card:#141c2e;--card2:#1a2540;
+  --border:#1e2d4a;--border2:#243459;
+  --accent:#00d4ff;--accent2:#0099cc;--accent3:#00f5a0;
+  --danger:#ff3b5c;--warn:#f59e0b;--success:#00f5a0;
+  --text:#e8edf5;--text2:#8fa3c8;--text3:#4d6490;
+  --font:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;
+  --radius:10px;--radius-lg:14px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;overflow:hidden}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ─── AUTH ──────────────────────────────────────────────────────── */
+#auth-screen{
+  display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);
+  background-image:radial-gradient(ellipse at 20% 50%,rgba(0,212,255,.06) 0,transparent 50%),
+    radial-gradient(ellipse at 80% 20%,rgba(0,245,160,.04) 0,transparent 40%);
+}
+.auth-box{width:420px;background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:40px;box-shadow:0 0 60px rgba(0,212,255,.07),0 24px 48px rgba(0,0,0,.4)}
+.auth-logo{display:flex;align-items:center;gap:12px;margin-bottom:32px}
+.auth-logo .icon{width:42px;height:42px;background:linear-gradient(135deg,var(--accent),var(--accent3));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.auth-logo h1{font-size:22px;font-weight:700;letter-spacing:-.5px}
+.auth-logo span{display:block;font-size:11px;color:var(--text2);font-family:var(--mono)}
+.auth-tabs{display:flex;gap:4px;margin-bottom:28px;background:var(--bg2);border-radius:8px;padding:4px}
+.auth-tab{flex:1;padding:8px;text-align:center;border:none;background:transparent;color:var(--text2);cursor:pointer;border-radius:6px;font-size:13px;font-family:var(--font);transition:.2s}
+.auth-tab.active{background:var(--card2);color:var(--text);font-weight:600}
+
+/* ─── FORMS ─────────────────────────────────────────────────────── */
+.form-group{margin-bottom:18px}
+.form-label{display:block;margin-bottom:6px;color:var(--text2);font-size:12px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.form-input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:var(--font);font-size:14px;transition:.2s;outline:none}
+.form-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,212,255,.1)}
+.form-input::placeholder{color:var(--text3)}
+select.form-input option{background:var(--bg2)}
+textarea.form-input{resize:vertical}
+
+/* ─── BUTTONS ───────────────────────────────────────────────────── */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-family:var(--font);font-size:13px;font-weight:600;transition:.15s;text-decoration:none;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000}
+.btn-primary:hover{opacity:.9;transform:translateY(-1px)}
+.btn-success{background:linear-gradient(135deg,var(--accent3),#00cc88);color:#000}
+.btn-danger{background:linear-gradient(135deg,var(--danger),#cc2244);color:#fff}
+.btn-warn{background:linear-gradient(135deg,var(--warn),#cc8800);color:#000}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--border2);color:var(--text);background:var(--card2)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.btn-xs{padding:4px 9px;font-size:11px;border-radius:6px}
+.btn-block{width:100%;justify-content:center}
+.error-msg{background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);color:#ff8099;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
+.success-msg{background:rgba(0,245,160,.1);border:1px solid rgba(0,245,160,.3);color:var(--accent3);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
+.info-msg{background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.2);color:var(--accent);padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
+.warn-msg{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:#fcd34d;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
+
+/* ─── MAIN LAYOUT ───────────────────────────────────────────────── */
+#app{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:220px;min-width:220px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.sidebar-brand{padding:20px 16px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);margin-bottom:8px}
+.brand-icon{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent3));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.brand-name{font-size:16px;font-weight:700;letter-spacing:-.3px}
+.brand-ver{font-size:10px;color:var(--text3);font-family:var(--mono)}
+.sidebar-section{padding:6px 10px 4px;font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;margin:1px 6px;border-radius:8px;cursor:pointer;color:var(--text2);transition:.15s;font-size:13px;font-weight:500;user-select:none}
+.nav-item:hover{background:var(--card);color:var(--text)}
+.nav-item.active{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.15)}
+.nav-item .icon{font-size:16px;width:20px;text-align:center;flex-shrink:0}
+.nav-item .badge{margin-left:auto;background:var(--accent);color:#000;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px}
+.sidebar-footer{margin-top:auto;padding:12px;border-top:1px solid var(--border)}
+.user-card{background:var(--card);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.user-card:hover{background:var(--card2)}
+.user-avatar{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent3));display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#000;flex-shrink:0}
+.user-info{min-width:0}
+.user-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-role{font-size:11px;color:var(--text3)}
+
+/* ─── MAIN CONTENT ──────────────────────────────────────────────── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.topbar-title{font-size:17px;font-weight:600;letter-spacing:-.3px}
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.content{flex:1;overflow-y:auto;padding:24px}
+
+/* ─── CARDS ─────────────────────────────────────────────────────── */
+.grid{display:grid;gap:16px}
+.grid-2{grid-template-columns:repeat(2,1fr)}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1100px){.grid-4{grid-template-columns:repeat(2,1fr)}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-size:14px;font-weight:600}
+
+/* ─── STAT CARDS ─────────────────────────────────────────────────── */
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;inset:0;opacity:.05;background:linear-gradient(135deg,var(--accent),transparent)}
+.stat-icon{font-size:28px;margin-bottom:12px}
+.stat-value{font-size:28px;font-weight:700;font-family:var(--mono);letter-spacing:-1px}
+.stat-label{font-size:12px;color:var(--text2);margin-top:4px;font-weight:500}
+.stat-sub{font-size:11px;color:var(--accent3);margin-top:4px;font-family:var(--mono)}
+
+/* ─── NODE CARDS (v2 NEU) ──────────────────────────────────────── */
+.node-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;transition:.15s;position:relative;overflow:hidden}
+.node-card.online{border-color:rgba(0,245,160,.25)}
+.node-card.online::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent3),var(--accent))}
+.node-card.offline{opacity:.75}
+.node-card.local{border-color:rgba(0,212,255,.2)}
+.node-card.local::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.node-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+.node-name{font-size:15px;font-weight:700}
+.node-fqdn{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px}
+.node-stats-row{display:flex;gap:10px;margin-top:10px}
+.node-stat{flex:1;text-align:center;padding:8px;background:var(--bg2);border-radius:8px}
+.node-stat-val{font-size:15px;font-weight:700;font-family:var(--mono)}
+.node-stat-lbl{font-size:10px;color:var(--text3);margin-top:2px}
+.node-actions{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.node-indicator{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,212,255,.08);color:var(--accent);border:1px solid rgba(0,212,255,.2)}
+.node-indicator .ndot{width:7px;height:7px;border-radius:50%}
+.ndot-on{background:var(--success);box-shadow:0 0 6px var(--success)}
+.ndot-off{background:var(--text3)}
+.ndot-local{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+
+/* ─── SERVER LIST ───────────────────────────────────────────────── */
+.server-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;display:flex;align-items:center;gap:16px;cursor:pointer;transition:.15s}
+.server-item:hover{border-color:var(--border2);background:var(--card2)}
+.server-status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.server-status-dot.running{background:var(--success);box-shadow:0 0 8px var(--success)}
+.server-status-dot.offline{background:var(--text3)}
+.server-status-dot.error{background:var(--danger);box-shadow:0 0 8px var(--danger)}
+.server-status-dot.installing,.server-status-dot.starting,.server-status-dot.stopping,.server-status-dot.restarting{background:var(--warn);box-shadow:0 0 8px var(--warn);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.server-info{flex:1;min-width:0}
+.server-name{font-size:14px;font-weight:600}
+.server-meta{font-size:12px;color:var(--text2);margin-top:3px;font-family:var(--mono)}
+.server-tags{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.tag{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--border)}
+.tag-image{color:var(--accent);border-color:rgba(0,212,255,.2);background:rgba(0,212,255,.05)}
+.tag-status{border-color:rgba(0,245,160,.2);background:rgba(0,245,160,.05);color:var(--accent3)}
+.tag-status.offline{color:var(--text3);border-color:var(--border)}
+.tag-status.error{color:var(--danger);border-color:rgba(255,59,92,.2);background:rgba(255,59,92,.05)}
+.tag-node{color:var(--warn);border-color:rgba(245,158,11,.2);background:rgba(245,158,11,.05)}
+.server-resources{text-align:right;font-size:11px;color:var(--text2);font-family:var(--mono);flex-shrink:0;line-height:1.8}
+.server-actions{display:flex;gap:6px;flex-shrink:0}
+
+/* ─── SERVER DETAIL ─────────────────────────────────────────────── */
+.server-detail-grid{display:grid;grid-template-columns:1fr 340px;gap:16px}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab{padding:10px 16px;border:none;background:transparent;color:var(--text2);cursor:pointer;font-family:var(--font);font-size:13px;font-weight:500;border-bottom:2px solid transparent;transition:.15s;margin-bottom:-1px}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ─── CONSOLE ───────────────────────────────────────────────────── */
+.console-wrap{background:#050810;border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;height:420px}
+.console-header{padding:10px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);flex-shrink:0}
+.console-dot{width:10px;height:10px;border-radius:50%}
+.console-output{flex:1;overflow-y:auto;padding:12px 14px;font-family:var(--mono);font-size:12px;line-height:1.6;color:#a8c0e0}
+.console-output .line{white-space:pre-wrap;word-break:break-all}
+.console-output .line.error{color:#ff6b8a}
+.console-output .line.warn{color:var(--warn)}
+.console-output .line.ok{color:var(--success)}
+.console-output .line.sys{color:var(--accent);font-style:italic}
+.console-input-row{display:flex;gap:8px;padding:10px;border-top:1px solid var(--border);flex-shrink:0}
+.console-input{flex:1;background:transparent;border:none;color:var(--accent3);font-family:var(--mono);font-size:12px;outline:none}
+.console-input::placeholder{color:var(--text3)}
+.console-prompt{color:var(--text3);font-family:var(--mono);font-size:12px;line-height:1.6;flex-shrink:0;padding-top:2px}
+
+/* ─── RESOURCE BARS ─────────────────────────────────────────────── */
+.resource-bar{background:var(--bg);border-radius:4px;height:6px;overflow:hidden;flex:1}
+.resource-fill{height:100%;border-radius:4px;transition:.5s}
+.resource-fill.cpu{background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.resource-fill.memory{background:linear-gradient(90deg,var(--accent3),#00aa77)}
+.resource-fill.danger{background:linear-gradient(90deg,var(--danger),#cc2244)}
+.resource-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.resource-label{font-size:12px;color:var(--text2);width:60px;flex-shrink:0}
+.resource-val{font-size:12px;font-family:var(--mono);color:var(--text);width:90px;text-align:right;flex-shrink:0}
+
+/* ─── TABLE ─────────────────────────────────────────────────────── */
+.table{width:100%;border-collapse:collapse}
+.table th{text-align:left;padding:10px 12px;font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+.table td{padding:10px 12px;border-bottom:1px solid rgba(30,45,74,.5);font-size:13px;vertical-align:middle}
+.table tr:hover td{background:rgba(255,255,255,.02)}
+.table tr:last-child td{border-bottom:none}
+
+/* ─── MODAL ─────────────────────────────────────────────────────── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(5px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal{background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:28px;width:100%;max-width:540px;max-height:88vh;overflow-y:auto;box-shadow:0 32px 64px rgba(0,0,0,.5)}
+.modal-lg{max-width:680px}
+.modal-title{font-size:18px;font-weight:700;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
+.modal-close{background:transparent;border:none;color:var(--text3);cursor:pointer;font-size:20px;padding:0;line-height:1}
+.modal-close:hover{color:var(--text)}
+.modal-footer{margin-top:24px;display:flex;justify-content:flex-end;gap:10px;padding-top:16px;border-top:1px solid var(--border)}
+
+/* ─── TOKEN/SETUP BOXEN (v2 NEU) ──────────────────────────────── */
+.setup-box{background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius-lg);padding:18px;margin-top:16px}
+.setup-box h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);margin-bottom:10px}
+.token-box{background:#050810;border:1px solid rgba(255,59,92,.25);border-radius:8px;padding:12px 14px;font-family:var(--mono);font-size:12px;color:#ff8099;word-break:break-all;line-height:1.6}
+.code-box{background:#050810;border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-family:var(--mono);font-size:12px;color:var(--accent);word-break:break-all;line-height:1.8;margin-top:8px}
+.env-display{background:#050810;border-radius:8px;padding:14px;font-family:var(--mono);font-size:12px;line-height:2;color:#a8c0e0}
+.env-key{color:var(--warn)}
+.env-val{color:var(--accent3)}
+
+/* ─── TOAST ─────────────────────────────────────────────────────── */
+#toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:12px 18px;font-size:13px;animation:slideIn .25s ease;box-shadow:0 8px 24px rgba(0,0,0,.3);display:flex;align-items:center;gap:10px;min-width:280px;max-width:380px}
+.toast.success{border-left:3px solid var(--success)}
+.toast.error{border-left:3px solid var(--danger)}
+.toast.info{border-left:3px solid var(--accent)}
+.toast.warn{border-left:3px solid var(--warn)}
+@keyframes slideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(110%);opacity:0}}
+
+/* ─── MISC ───────────────────────────────────────────────────────── */
+.empty{text-align:center;padding:60px 20px;color:var(--text3)}
+.empty-icon{font-size:48px;margin-bottom:16px;opacity:.5}
+.empty h3{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:8px}
+.empty p{font-size:13px}
+.flex{display:flex}.items-center{align-items:center}.gap-8{gap:8px}.gap-12{gap:12px}
+.flex-1{flex:1}.mt-8{margin-top:8px}.mt-16{margin-top:16px}.mb-16{margin-bottom:16px}
+.text-sm{font-size:12px}.text-xs{font-size:11px}
+.text-mono{font-family:var(--mono)}.text-muted{color:var(--text2)}.text-dim{color:var(--text3)}
+.text-danger{color:var(--danger)}.text-success{color:var(--success)}.text-accent{color:var(--accent)}.text-warn{color:var(--warn)}
+.divider{border:none;border-top:1px solid var(--border);margin:16px 0}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
+.chip-online{background:rgba(0,245,160,.1);color:var(--success);border:1px solid rgba(0,245,160,.2)}
+.chip-offline{background:rgba(255,255,255,.04);color:var(--text3);border:1px solid var(--border)}
+.chip-admin{background:rgba(245,158,11,.1);color:var(--warn);border:1px solid rgba(245,158,11,.2)}
+.chip-local{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)}
+.spin{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none!important}
+.power-btn{width:38px;height:38px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:.15s}
+.power-btn:hover{background:var(--card2);border-color:var(--border2)}
+.power-btn.start:hover{border-color:rgba(0,245,160,.4);background:rgba(0,245,160,.1);color:var(--success)}
+.power-btn.stop:hover{border-color:rgba(255,59,92,.4);background:rgba(255,59,92,.1);color:var(--danger)}
+.power-btn.restart:hover{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1);color:var(--warn)}
+
+/* ─── FILE MANAGER ──────────────────────────────────────────────── */
+.fm-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.fm-path{flex:1;font-family:var(--mono);font-size:12px;color:var(--text2);background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fm-table{width:100%;border-collapse:collapse}
+.fm-table th{text-align:left;padding:8px 10px;font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;border-bottom:1px solid var(--border);user-select:none}
+.fm-table td{padding:8px 10px;border-bottom:1px solid rgba(30,45,74,.4);font-size:12px;vertical-align:middle}
+.fm-table tr:hover td{background:rgba(255,255,255,.02);cursor:pointer}
+.fm-icon{font-size:16px;margin-right:6px}
+.fm-name{font-family:var(--mono);color:var(--text)}
+.fm-name.dir{color:var(--accent)}
+.fm-size{color:var(--text3);font-family:var(--mono);font-size:11px}
+.fm-date{color:var(--text3);font-size:11px}
+.fm-actions{display:flex;gap:4px;opacity:0;transition:.15s}
+.fm-table tr:hover .fm-actions{opacity:1}
+.fm-editor{display:flex;flex-direction:column;height:100%}
+.fm-editor-header{display:flex;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.fm-editor-body{flex:1;position:relative}
+.fm-editor-body textarea{width:100%;height:100%;min-height:400px;background:#050810;border:none;color:#a8c0e0;font-family:var(--mono);font-size:12px;line-height:1.7;padding:16px;resize:vertical;outline:none}
+
+/* ─── EGGS ───────────────────────────────────────────────────────── */
+.egg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.egg-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;cursor:pointer;transition:.15s;position:relative}
+.egg-card:hover{border-color:var(--accent);background:var(--card2);transform:translateY(-2px)}
+.egg-card.selected{border-color:var(--accent);background:rgba(0,212,255,.06)}
+.egg-card.selected::after{content:'✓';position:absolute;top:12px;right:12px;color:var(--accent);font-weight:700;font-size:16px}
+.egg-icon{font-size:32px;margin-bottom:10px}
+.egg-name{font-size:14px;font-weight:700;margin-bottom:4px}
+.egg-image{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.egg-desc{font-size:12px;color:var(--text2);line-height:1.5}
+.egg-category{font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2);display:inline-block;margin-top:8px}
+
+/* ─── ALLOCATIONS ────────────────────────────────────────────────── */
+.alloc-row-free{color:var(--success)}
+.alloc-row-used{color:var(--text2)}
+.port-badge{font-family:var(--mono);font-size:12px;font-weight:700;padding:3px 10px;border-radius:6px;background:var(--bg2);border:1px solid var(--border)}
+.port-badge.free{border-color:rgba(0,245,160,.3);color:var(--success)}
+.port-badge.used{border-color:rgba(245,158,11,.3);color:var(--warn)}
+
+/* ─── CHART CONTAINER ────────────────────────────────────────────── */
+.chart-container{position:relative;height:200px}
+
+
+/* ─── MODS / PLUGIN MANAGER ─────────────────────────────────────── */
+.mods-layout{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
+.mod-search-bar{display:flex;gap:8px;margin-bottom:14px}
+.mod-search-bar input{flex:1}
+.platform-badge{display:inline-flex;align-items:center;gap:7px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid;margin-bottom:14px}
+.pb-minecraft{background:rgba(0,212,255,.08);color:var(--accent);border-color:rgba(0,212,255,.25)}
+.pb-source{background:rgba(245,158,11,.08);color:var(--warn);border-color:rgba(245,158,11,.25)}
+.pb-valheim{background:rgba(0,245,160,.08);color:var(--accent3);border-color:rgba(0,245,160,.25)}
+.pb-generic{background:rgba(255,255,255,.05);color:var(--text2);border-color:var(--border)}
+.mod-tabs{display:flex;gap:2px;margin-bottom:14px;background:var(--bg2);border-radius:8px;padding:3px}
+.mod-tab{flex:1;padding:7px 4px;border:none;background:transparent;color:var(--text3);cursor:pointer;border-radius:6px;font-size:12px;font-weight:500;transition:.15s;font-family:var(--font)}
+.mod-tab:hover{color:var(--text)}
+.mod-tab.active{background:var(--card2);color:var(--text);font-weight:600}
+.mod-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;display:flex;gap:12px;cursor:pointer;transition:.15s;margin-bottom:8px}
+.mod-card:hover{border-color:var(--border2);background:var(--card2)}
+.mod-icon{width:44px;height:44px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--card)}
+.mod-icon-placeholder{width:44px;height:44px;border-radius:8px;background:linear-gradient(135deg,var(--card),var(--card2));display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.mod-info{flex:1;min-width:0}
+.mod-name{font-size:13px;font-weight:600;margin-bottom:3px}
+.mod-desc{font-size:11px;color:var(--text2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mod-meta{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;align-items:center}
+.mod-dl{font-size:11px;color:var(--text3);font-family:var(--mono)}
+.mod-source-badge{font-size:10px;padding:1px 7px;border-radius:4px;font-weight:600}
+.msb-modrinth{background:rgba(0,245,160,.12);color:var(--accent3)}
+.msb-curseforge{background:rgba(245,90,0,.12);color:#ff7733}
+.msb-workshop{background:rgba(100,130,200,.12);color:#8899dd}
+.msb-github{background:rgba(200,200,200,.08);color:var(--text2)}
+.installed-mod-row{display:flex;align-items:center;gap:10px;padding:10px;border-bottom:1px solid rgba(30,45,74,.5);font-size:13px}
+.installed-mod-row:last-child{border-bottom:none}
+.installed-mod-row:hover{background:rgba(255,255,255,.02)}
+.mod-ext-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;font-family:var(--mono);background:var(--bg2);border:1px solid var(--border)}
+.version-list{max-height:320px;overflow-y:auto}
+.version-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid rgba(30,45,74,.4);cursor:pointer;transition:.15s}
+.version-row:hover{background:rgba(0,212,255,.05)}
+.version-name{font-size:13px;font-weight:500;flex:1}
+.version-tags{display:flex;gap:5px;flex-wrap:wrap}
+.vtag{font-size:10px;padding:2px 7px;border-radius:4px;border:1px solid var(--border);color:var(--text3)}
+.vtag.mc{border-color:rgba(0,212,255,.2);color:var(--accent)}
+.vtag.loader{border-color:rgba(0,245,160,.2);color:var(--accent3)}
+.install-progress{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:12px;font-family:var(--mono);font-size:12px;color:#a8c0e0;min-height:60px;max-height:160px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+
+
+/* ─── NETZWERK TAB ─────────────────────────────────────────────────────── */
+.network-port-row{display:flex;align-items:center;gap:16px;padding:16px;border-bottom:1px solid var(--border);transition:background .15s}
+.network-port-row:last-child{border-bottom:none}
+.network-port-row.is-primary{background:rgba(88,166,255,.05)}
+.network-port-left{display:flex;align-items:center;gap:12px;min-width:220px}
+.network-icon{font-size:22px;opacity:.6}
+.network-badges{display:flex;gap:8px;align-items:center}
+.badge-ip{background:var(--bg3);border-radius:6px;padding:4px 10px;font-family:var(--mono);font-size:13px;font-weight:600}
+.badge-port{background:var(--bg3);border-radius:6px;padding:4px 10px;font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent)}
+.network-labels{display:flex;gap:8px;margin-top:3px;font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.06em}
+.network-labels span{min-width:80px}
+.network-notes{flex:1}
+.network-notes-input{width:100%;background:var(--bg2);height:38px}
+.network-actions{display:flex;gap:8px;align-items:center;min-width:180px;justify-content:flex-end}
+.network-add-ports{display:flex;flex-wrap:wrap;gap:8px}
+.badge-alloc{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:6px 14px;font-family:var(--mono);font-size:13px;cursor:pointer;transition:all .15s;color:var(--text)}
+.badge-alloc:hover{border-color:var(--accent);color:var(--accent);background:rgba(88,166,255,.08)}
+
+
+/* ─── MOBILE RESPONSIVE ────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  .app{flex-direction:column}
+  .sidebar{width:100%;height:auto;flex-direction:row;flex-wrap:wrap;padding:8px;gap:4px;position:sticky;top:0;z-index:100;overflow-x:auto}
+  .sidebar-section{display:none}
+  .sidebar .logo{padding:8px 12px;font-size:14px;margin:0 auto 0 0}
+  .nav-item{padding:6px 10px;border-radius:6px;font-size:12px;white-space:nowrap}
+  .nav-item .icon{font-size:14px}
+  .main{padding:12px}
+  .page-header{flex-direction:column;gap:8px;align-items:flex-start}
+  .page-actions{width:100%;display:flex;flex-wrap:wrap;gap:6px}
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr!important}
+  .server-detail-grid{grid-template-columns:1fr!important}
+  .mods-layout{grid-template-columns:1fr!important}
+  .detail-sidebar{order:-1}
+  .modal-content{width:96vw;max-height:90vh;overflow-y:auto}
+  .table{font-size:12px}
+  .table th,.table td{padding:8px 10px}
+  .network-port-row{flex-wrap:wrap;gap:8px}
+  .network-port-left{min-width:0}
+  .network-notes{width:100%;min-width:0}
+  .network-actions{width:100%;justify-content:flex-start}
+  #detail-tabs{overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
+  .console-output{font-size:11px}
+  .stat-cards{grid-template-columns:1fr 1fr!important}
+  .card{padding:12px}
+  .btn{padding:6px 12px;font-size:13px}
+}
+@media(max-width:480px){
+  .stat-cards{grid-template-columns:1fr!important}
+  .main{padding:8px}
+  .modal-content{width:100vw;border-radius:12px 12px 0 0;position:fixed;bottom:0;margin:0}
+}
+
+
+/* ─── SCHEDULE + AUDIT + CLONE ──────────────────────────────────────────────── */
+.badge-action{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-family:var(--mono);font-weight:600;text-transform:uppercase}
+.badge-action.start{background:#00f5a022;color:#00f5a0}
+.badge-action.stop{background:#f59e0b22;color:#f59e0b}
+.badge-action.restart{background:#60a5fa22;color:#60a5fa}
+.badge-action.command{background:#a78bfa22;color:#a78bfa}
+.audit-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-family:var(--mono);border:1px solid transparent}
+.btn-xs{padding:3px 8px;font-size:11px}
+
+
+/* ─── STATS KPI CARDS ────────────────────────────────────────────────────────── */
+.stats-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+.kpi-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start}
+.kpi-icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.kpi-body{flex:1;min-width:0}
+.kpi-label{font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.kpi-value{font-size:20px;font-weight:700;font-family:var(--mono);line-height:1.2}
+.kpi-sub{font-size:11px;color:var(--text3);margin-top:1px}
+.kpi-bar{height:3px;background:var(--bg3);border-radius:2px;margin-top:8px;overflow:hidden}
+.kpi-fill{height:100%;border-radius:2px;transition:width .4s ease}
+.kpi-cpu{background:linear-gradient(90deg,#00d4ff,#0090ff)}
+.kpi-mem{background:linear-gradient(90deg,#00f5a0,#00c080)}
+/* ─── STATS CHARTS ────────────────────────────────────────────────────────────── */
+.stats-chart-row{display:flex;gap:12px}
+.stats-chart-card{flex:1}
+.stats-chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.stats-chart-title{font-size:13px;font-weight:600;color:var(--text)}
+.stats-chart-badge{font-family:var(--mono);font-size:12px;color:var(--accent);background:var(--bg3);padding:2px 8px;border-radius:4px}
+/* ─── LIMITS TABLE ────────────────────────────────────────────────────────────── */
+.limits-table{display:flex;flex-direction:column;gap:8px}
+.limits-row{display:flex;justify-content:space-between;align-items:center;font-size:13px}
+.limits-row>span:first-child{color:var(--text3)}
+/* ─── SUBUSERS ────────────────────────────────────────────────────────────────── */
+.subuser-row{display:flex;align-items:center;gap:14px;padding:14px;border-bottom:1px solid var(--border)}
+.subuser-row:last-child{border-bottom:none}
+.subuser-avatar{width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:var(--accent);flex-shrink:0}
+.subuser-info{flex:1}
+.subuser-name{font-weight:600;font-size:14px}
+.subuser-email{font-size:12px;color:var(--text3)}
+.perm-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.perm-chip{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);cursor:pointer;user-select:none;transition:.15s}
+.perm-chip.active{background:rgba(0,212,255,.12);color:var(--accent);border-color:var(--accent)}
+/* ─── ACTIVITY LOG ────────────────────────────────────────────────────────────── */
+.activity-item{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);align-items:flex-start}
+.activity-item:last-child{border-bottom:none}
+.activity-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.activity-body{flex:1;min-width:0}
+.activity-action{font-size:13px;font-weight:500}
+.activity-meta{font-size:11px;color:var(--text3);margin-top:2px}
+@media(max-width:900px){.stats-kpi-row{grid-template-columns:repeat(2,1fr)}.stats-chart-row{flex-direction:column}}
+@media(max-width:600px){.stats-kpi-row{grid-template-columns:1fr 1fr}.kpi-value{font-size:16px}}
+
+</style>
+</head>
+<body>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="icon">⚡</div>
+      <div><h1>HostPanel</h1><span>Multi-Node Server Management</span></div>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Login</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Registrieren</button>
+    </div>
+    <div id="auth-error" class="error-msg hidden"></div>
+    <div id="login-form">
+      <div class="form-group"><label class="form-label">Email</label><input type="email" id="login-email" class="form-input" value="admin@hostpanel.local"/></div>
+      <div class="form-group"><label class="form-label">Passwort</label><input type="password" id="login-pass" class="form-input" value="admin123"/></div>
+      <button class="btn btn-primary btn-block" onclick="doLogin()"><span>🔓</span> Anmelden</button>
+    </div>
+    <div id="register-form" class="hidden">
+      <div class="form-group"><label class="form-label">Username</label><input type="text" id="reg-user" class="form-input" placeholder="john_doe"/></div>
+      <div class="form-group"><label class="form-label">Email</label><input type="email" id="reg-email" class="form-input"/></div>
+      <div class="form-group"><label class="form-label">Passwort</label><input type="password" id="reg-pass" class="form-input" placeholder="Min. 8 Zeichen"/></div>
+      <button class="btn btn-primary btn-block" onclick="doRegister()"><span>👤</span> Account erstellen</button>
+    </div>
+    <p style="text-align:center;margin-top:16px;font-size:11px;color:var(--text3)">HostPanel v2.0 • Multi-Node</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="hidden">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">⚡</div>
+      <div><div class="brand-name">HostPanel</div><div class="brand-ver">v2.0 Multi-Node</div></div>
+    </div>
+    <div class="sidebar-section">Navigation</div>
+    <div class="nav-item active" onclick="navigate('dashboard')" data-page="dashboard"><span class="icon">📊</span> Dashboard</div>
+    <div class="nav-item" onclick="navigate('servers')" data-page="servers"><span class="icon">🖥️</span> Server<span class="badge" id="server-count-badge">0</span></div>
+    <div class="sidebar-section admin-only hidden">Admin</div>
+    <div class="nav-item admin-only hidden" onclick="navigate('admin-nodes')" data-page="admin-nodes"><span class="icon">🌐</span> Nodes</div>
+    <div class="nav-item admin-only hidden" onclick="navigate('admin-eggs')" data-page="admin-eggs"><span class="icon">🐣</span> Eggs / Templates</div>
+    <div class="nav-item admin-only hidden" onclick="navigate('admin-allocations')" data-page="admin-allocations"><span class="icon">🔌</span> Port Allocations</div>
+    <div class="nav-item admin-only hidden" onclick="navigate('admin-users')" data-page="admin-users"><span class="icon">👥</span> Benutzer</div>
+    <div class="nav-item admin-only hidden" onclick="navigate('admin-audit')" data-page="admin-audit"><span class="icon">📋</span> Audit Log</div>
+    <div class="nav-item admin-only hidden" onclick="navigate('admin-docker')" data-page="admin-docker"><span class="icon">🐳</span> Docker Images</div>
+    <div class="sidebar-section">Konto</div>
+    <div class="nav-item" onclick="navigate('api-keys')" data-page="api-keys"><span class="icon">🔑</span> API Keys</div>
+    <div class="nav-item" onclick="navigate('settings')" data-page="settings"><span class="icon">⚙️</span> Einstellungen</div>
+    <div class="sidebar-footer">
+      <div class="user-card" onclick="navigate('settings')">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div class="user-info">
+          <div class="user-name" id="sidebar-name">...</div>
+          <div class="user-role" id="sidebar-role">user</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="topbar-title" id="page-title">Dashboard</div>
+        <div id="page-meta"></div>
+      </div>
+      <div class="topbar-actions" id="page-actions"></div>
+    </div>
+    <div class="content" id="page-content"></div>
+  </main>
+</div>
+
+<div id="modal-container"></div>
+<div id="toast-container"></div>
+
+<script>
+// ─── STATE ────────────────────────────────────────────────────────────────────
+const State = {
+  token:       localStorage.getItem('hp_token') || null,
+  user:        null,
+  currentPage: 'dashboard',
+  serverDetail: null,
+  wsConn:      null,
+  nodes:       {},   // nodeId → node-info
+};
+
+// ─── API ─────────────────────────────────────────────────────────────────────
+const API = {
+  async req(method, path, body) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (State.token) opts.headers['Authorization'] = `Bearer ${State.token}`;
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const res  = await fetch('/api' + path, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  },
+  get:    p     => API.req('GET', p),
+  post:   (p,b) => API.req('POST', p, b),
+  put:    (p,b) => API.req('PUT', p, b),
+  patch:  (p,b) => API.req('PATCH', p, b),
+  delete: (p,b) => API.req('DELETE', p, b),
+};
+
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+function switchAuthTab(tab) {
+  document.querySelectorAll('.auth-tab').forEach((t,i) => t.classList.toggle('active', (tab==='login'&&i===0)||(tab==='register'&&i===1)));
+  document.getElementById('login-form').classList.toggle('hidden', tab !== 'login');
+  document.getElementById('register-form').classList.toggle('hidden', tab !== 'register');
+  document.getElementById('auth-error').classList.add('hidden');
+}
+async function doLogin() {
+  try {
+    const d = await API.post('/auth/login', { email: document.getElementById('login-email').value.trim(), password: document.getElementById('login-pass').value });
+    State.token = d.token; localStorage.setItem('hp_token', d.token); State.user = d.user; initApp();
+  } catch (e) { showAuthError(e.message); }
+}
+async function doRegister() {
+  try {
+    const d = await API.post('/auth/register', { username: document.getElementById('reg-user').value.trim(), email: document.getElementById('reg-email').value.trim(), password: document.getElementById('reg-pass').value });
+    State.token = d.token; localStorage.setItem('hp_token', d.token); State.user = d.user; initApp();
+  } catch (e) { showAuthError(e.message); }
+}
+function showAuthError(m) { const el = document.getElementById('auth-error'); el.textContent = m; el.classList.remove('hidden'); }
+function logout() {
+  State.token = null; localStorage.removeItem('hp_token'); State.user = null;
+  if (State.wsConn) State.wsConn.close();
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('auth-screen').classList.remove('hidden');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+async function initApp() {
+  try {
+    if (!State.user) State.user = await API.get('/auth/me');
+    document.getElementById('auth-screen').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    document.getElementById('sidebar-name').textContent = State.user.username;
+    document.getElementById('sidebar-role').textContent = State.user.role;
+    document.getElementById('sidebar-avatar').textContent = State.user.username[0].toUpperCase();
+    if (State.user.role === 'admin') document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+    connectWS();
+    navigate('dashboard');
+    loadServerCount();
+  } catch { logout(); }
+}
+async function loadServerCount() {
+  try { const s = await API.get('/servers'); document.getElementById('server-count-badge').textContent = s.length; } catch {}
+}
+
+// ─── WEBSOCKET ────────────────────────────────────────────────────────────────
+let _wsDelay = 2000;
+let _wsTimer = null;
+
+function connectWS() {
+  // Verhindere doppelte Verbindungen
+  if (State.wsConn && State.wsConn.readyState === WebSocket.CONNECTING) return;
+  if (State.wsConn && State.wsConn.readyState === WebSocket.OPEN) return;
+
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  let ws;
+  try {
+    ws = new WebSocket(`${proto}//${location.host}/ws`);
+  } catch { return; }
+
+  State.wsConn = ws;
+
+  ws.onopen = () => {
+    _wsDelay = 2000; // Reset backoff bei Erfolg
+    ws.send(JSON.stringify({ type: 'auth', token: State.token }));
+    // Aktiven Server neu abonnieren
+    if (State.serverDetail) {
+      wsSend({ type: 'subscribe_stats',   server_id: State.serverDetail });
+      wsSend({ type: 'console.subscribe', server_id: State.serverDetail });
+    }
+  };
+
+  ws.onmessage = e => { try { handleWsMsg(JSON.parse(e.data)); } catch {} };
+
+  ws.onerror = () => { /* Error wird durch onclose abgehandelt, kein Log */ };
+
+  ws.onclose = () => {
+    State.wsConn = null;
+    // Exponential backoff: 2s → 4s → 8s → max 30s
+    _wsDelay = Math.min(_wsDelay * 1.5, 30000);
+    if (_wsTimer) clearTimeout(_wsTimer);
+    _wsTimer = setTimeout(connectWS, _wsDelay);
+  };
+}
+
+function toggleAlloc(el, port) {
+  const portsEl = document.getElementById('m-ports');
+  if (!portsEl) return;
+  const entry = `${port}:${port}`;
+  const selected = el.dataset.selected === '1';
+  if (selected) {
+    el.style.background = 'var(--card2)';
+    el.style.color = 'var(--success)';
+    el.dataset.selected = '0';
+    portsEl.value = portsEl.value.split(',').map(s=>s.trim()).filter(s=>s && s!==entry).join(', ');
+  } else {
+    el.style.background = '#7c6af7';
+    el.style.color = '#fff';
+    el.dataset.selected = '1';
+    const parts = portsEl.value.split(',').map(s=>s.trim()).filter(Boolean);
+    if (!parts.includes(entry)) parts.push(entry);
+    portsEl.value = parts.join(', ');
+  }
+}
+
+function wsSend(m) { if (State.wsConn?.readyState === WebSocket.OPEN) State.wsConn.send(JSON.stringify(m)); }
+
+// ─── STATUS POLLING ──────────────────────────────────────────────────────────
+// Wenn Server in transitionalem Zustand (starting/stopping/installing) → alle 3s Status prüfen
+let _statusPollTimer = null;
+const TRANSITIONAL = new Set(['starting','stopping','restarting','installing']);
+
+function startStatusPoll(serverId) {
+  stopStatusPoll();
+  _statusPollTimer = setInterval(async () => {
+    try {
+      const srv = await API.get(`/servers/${serverId}`);
+      // Status-Dot überall aktualisieren
+      document.querySelectorAll(`[data-sid="${serverId}"]`).forEach(el => {
+        el.className = `server-status-dot ${srv.status}`;
+      });
+      if (State.currentPage === 'server-detail' && State.serverDetail === serverId) {
+        // Topbar-Buttons neu rendern wenn Status sich geändert hat
+        const sc = srv.status;
+        document.getElementById('page-actions').innerHTML = `
+          <button class="btn btn-ghost btn-sm" onclick="navigate('servers')">← Zurück</button>
+          ${sc !== 'running' ? `<button class="btn btn-success btn-sm" onclick="serverPower('${serverId}','start')">▶ Start</button>` : ''}
+          ${sc === 'running' ? `<button class="btn btn-ghost btn-sm" onclick="serverPower('${serverId}','restart')">↺ Restart</button>` : ''}
+          ${sc === 'running' ? `<button class="btn btn-danger btn-sm" onclick="serverPower('${serverId}','stop')">■ Stop</button>` : ''}
+          <button class="btn btn-ghost btn-sm" onclick="showEditServer('${serverId}')">✏️ Bearbeiten</button>
+          <button class="btn btn-ghost btn-sm text-danger" onclick="confirmDeleteServer('${serverId}','${esc(srv.name)}')">🗑️</button>`;
+        // Konsole-Header-Dot
+        const dot = document.querySelector('.console-dot');
+        if (dot) dot.style.background = sc === 'running' ? 'var(--success)' : 'var(--text3)';
+      }
+      // Polling stoppen wenn stabiler Status erreicht
+      if (!TRANSITIONAL.has(srv.status)) stopStatusPoll();
+    } catch {}
+  }, 3000);
+}
+
+function stopStatusPoll() {
+  if (_statusPollTimer) { clearInterval(_statusPollTimer); _statusPollTimer = null; }
+}
+
+function handleWsMsg(msg) {
+  if (msg.type === 'auth') return;
+  if (msg.type === 'stats')          { handleWsStats(msg); return; }
+  if (msg.type === 'console')        { handleWsConsole(msg); return; }
+  // v2: Node-Events
+  if (msg.type === 'nodes.status')   { msg.nodes.forEach(n => { State.nodes[n.id] = n; }); updateNodeIndicators(); return; }
+  if (msg.type === 'node.online')    { if (State.nodes[msg.node_id]) State.nodes[msg.node_id].connected = true; updateNodeIndicators(); toast(`Node "${msg.node_name}" verbunden ✅`, 'success'); return; }
+  if (msg.type === 'node.offline')   { if (State.nodes[msg.node_id]) State.nodes[msg.node_id].connected = false; updateNodeIndicators(); toast(`Node "${msg.node_name}" getrennt`, 'warn'); return; }
+  if (msg.type === 'node.info' && State.nodes[msg.node_id]) { State.nodes[msg.node_id].system = msg.system; return; }
+  if (msg.type === 'server.status')  {
+    document.querySelectorAll(`[data-sid="${msg.server_id}"]`).forEach(el => el.className = `server-status-dot ${msg.status}`);
+  }
+}
+
+function updateNodeIndicators() {
+  document.querySelectorAll('[data-node-ind]').forEach(el => {
+    const n = State.nodes[el.dataset.nodeInd];
+    if (!n) return;
+    const dot = el.querySelector('.ndot');
+    if (dot) dot.className = `ndot ${n.connected ? (n.is_local ? 'ndot-local' : 'ndot-on') : 'ndot-off'}`;
+    const lbl = el.querySelector('.ni-lbl');
+    if (lbl) lbl.textContent = n.connected ? (n.is_local ? 'lokal' : 'online') : 'offline';
+  });
+}
+
+// ─── NAVIGATION ──────────────────────────────────────────────────────────────
+function navigate(page, data) {
+  State.currentPage = page; State.serverDetail = data || null;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.toggle('active', el.dataset.page === page));
+  const titles = { dashboard:'Dashboard', servers:'Server', 'server-detail':'Server Detail', 'admin-nodes':'Nodes', 'admin-eggs':'Eggs / Templates', 'admin-allocations':'Port Allocations', 'admin-users':'Benutzerverwaltung', 'admin-audit':'Audit Log', 'admin-docker':'Docker Images', 'api-keys':'API Keys', settings:'Einstellungen' };
+  document.getElementById('page-title').textContent = titles[page] || page;
+  document.getElementById('page-meta').innerHTML = '';
+  document.getElementById('page-actions').innerHTML = '';
+  document.getElementById('page-content').innerHTML = '<div class="empty"><div class="empty-icon spin">⚙️</div><p>Lädt...</p></div>';
+  const pages = { dashboard:loadDashboard, servers:loadServers, 'server-detail':loadServerDetail, 'admin-nodes':loadAdminNodes, 'admin-eggs':loadAdminEggs, 'admin-allocations':loadAdminAllocations, 'admin-users':loadAdminUsers, 'admin-audit':loadAuditLog, 'admin-docker':loadDockerImages, 'api-keys':loadApiKeys, settings:loadSettings };
+  if (pages[page]) pages[page](data);
+}
+
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const [servers, adminStats] = await Promise.all([
+    API.get('/servers').catch(() => []),
+    State.user.role === 'admin' ? API.get('/admin/stats').catch(() => null) : Promise.resolve(null),
+  ]);
+  const running = servers.filter(s => s.status === 'running').length;
+
+  let nodesHtml = '';
+  if (adminStats?.nodes_detail?.length) {
+    nodesHtml = `
+      <div class="card mt-16">
+        <div class="card-header"><div class="card-title">🌐 Node-Status</div><button class="btn btn-ghost btn-sm" onclick="navigate('admin-nodes')">Verwalten →</button></div>
+        <div class="grid grid-${Math.min(adminStats.nodes_detail.length,3)}">
+          ${adminStats.nodes_detail.map(n => nodeCardSmall(n)).join('')}
+        </div>
+      </div>`;
+  }
+
+  let dockerHtml = '';
+  if (adminStats?.docker && !adminStats.docker.note) {
+    const d = adminStats.docker;
+    dockerHtml = `
+      <div class="card mt-16">
+        <div class="card-header"><div class="card-title">🐳 Lokaler Docker</div><span class="chip ${d.mock?'chip-offline':'chip-online'}">${d.mock?'Mock':'● Online'}</span></div>
+        <div class="grid grid-4">
+          <div><div class="text-dim text-sm">Version</div><div class="text-mono mt-8">${d.docker_version||d.version||'N/A'}</div></div>
+          <div><div class="text-dim text-sm">OS</div><div class="mt-8">${d.os||'N/A'}</div></div>
+          <div><div class="text-dim text-sm">CPUs</div><div class="text-mono mt-8">${d.cpus||'N/A'}</div></div>
+          <div><div class="text-dim text-sm">RAM</div><div class="text-mono mt-8">${d.memory_total ? fmtBytes(d.memory_total) : 'N/A'}</div></div>
+        </div>
+      </div>`;
+  }
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="grid grid-4">
+      <div class="stat-card"><div class="stat-icon">🖥️</div><div class="stat-value">${servers.length}</div><div class="stat-label">Server gesamt</div><div class="stat-sub">${running} laufen</div></div>
+      <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value" style="color:var(--success)">${running}</div><div class="stat-label">Laufend</div><div class="stat-sub">${servers.length-running} offline</div></div>
+      ${adminStats ? `
+        <div class="stat-card"><div class="stat-icon">🌐</div><div class="stat-value">${adminStats.nodes_online}/${adminStats.nodes}</div><div class="stat-label">Nodes online</div><div class="stat-sub">Multi-Node</div></div>
+        <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value">${adminStats.users}</div><div class="stat-label">Benutzer</div><div class="stat-sub">${adminStats.suspended} gesperrt</div></div>
+      ` : `
+        <div class="stat-card"><div class="stat-icon">⏹</div><div class="stat-value">${servers.length-running}</div><div class="stat-label">Offline</div></div>
+        <div class="stat-card"><div class="stat-icon">👤</div><div class="stat-value" style="color:var(--accent);font-size:16px">${State.user.role}</div><div class="stat-label">Deine Rolle</div><div class="stat-sub">${State.user.email}</div></div>
+      `}
+    </div>
+    ${nodesHtml}
+    ${dockerHtml}
+    <div class="card mt-16">
+      <div class="card-header"><div class="card-title">Aktuelle Server</div><button class="btn btn-ghost btn-sm" onclick="navigate('servers')">Alle →</button></div>
+      ${servers.length === 0 ? '<div class="empty" style="padding:24px"><p>Noch keine Server</p></div>' :
+        `<div style="display:flex;flex-direction:column;gap:8px">${servers.slice(0,6).map(s => serverItemHtml(s, true)).join('')}</div>`}
+    </div>`;
+}
+
+function nodeCardSmall(n) {
+  const on = n.connected;
+  const si = n.system_info || {};
+  return `
+    <div class="node-card ${on ? (n.is_local ? 'local' : 'online') : 'offline'}">
+      <div class="node-header">
+        <div><div class="node-name">${esc(n.name)}</div><div class="node-fqdn">${esc(n.fqdn)}</div></div>
+        <span class="chip ${on ? (n.is_local ? 'chip-local' : 'chip-online') : 'chip-offline'}">${n.is_local ? '⚡ Lokal' : on ? '● Online' : '○ Offline'}</span>
+      </div>
+      ${on && si.cpus ? `<div class="node-stats-row">
+        <div class="node-stat"><div class="node-stat-val">${si.cpus}</div><div class="node-stat-lbl">CPUs</div></div>
+        <div class="node-stat"><div class="node-stat-val">${si.memory_total ? fmtBytes(si.memory_total) : '?'}</div><div class="node-stat-lbl">RAM</div></div>
+        <div class="node-stat"><div class="node-stat-val">${n.server_count||0}</div><div class="node-stat-lbl">Server</div></div>
+      </div>` : `<div class="text-dim text-sm mt-8">${n.server_count||0} Server · ${esc(n.location)}</div>`}
+    </div>`;
+}
+
+// ─── SERVERS ─────────────────────────────────────────────────────────────────
+async function loadServers() {
+  document.getElementById('page-actions').innerHTML = `<button class="btn btn-primary" onclick="showCreateServer()">＋ Neuer Server</button>`;
+  try {
+    const servers = await API.get('/servers');
+    document.getElementById('server-count-badge').textContent = servers.length;
+    if (servers.length === 0) {
+      document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">🖥️</div><h3>Keine Server</h3><p>Erstelle deinen ersten Server</p><button class="btn btn-primary" style="margin-top:16px" onclick="showCreateServer()">＋ Server erstellen</button></div>`;
+      return;
+    }
+    document.getElementById('page-content').innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${servers.map(s => serverItemHtml(s, false)).join('')}</div>`;
+  } catch (e) { document.getElementById('page-content').innerHTML = `<div class="empty"><p class="text-danger">Fehler: ${esc(e.message)}</p></div>`; }
+}
+
+function serverItemHtml(s, compact) {
+  const sc = s.status || 'offline';
+  const nodeTag = s.node_name ? `<span class="tag tag-node">🌐 ${esc(s.node_name)}</span>` : '';
+  const actions = compact ? '' : `
+    <div class="server-actions">
+      ${sc !== 'running' ? `<button class="power-btn start" title="Starten" onclick="event.stopPropagation();serverPower('${s.id}','start')">▶</button>` : ''}
+      ${sc === 'running' ? `<button class="power-btn restart" title="Neustart" onclick="event.stopPropagation();serverPower('${s.id}','restart')">↺</button>` : ''}
+      ${sc === 'running' ? `<button class="power-btn stop" title="Stoppen" onclick="event.stopPropagation();serverPower('${s.id}','stop')">■</button>` : ''}
+    </div>`;
+  return `
+    <div class="server-item" onclick="navigate('server-detail','${s.id}')">
+      <div class="server-status-dot ${sc}" data-sid="${s.id}"></div>
+      <div class="server-info">
+        <div class="server-name">${esc(s.name)}</div>
+        <div class="server-meta">${s.owner_name ? esc(s.owner_name)+' · ' : ''}${esc(s.image)}</div>
+        <div class="server-tags">
+          <span class="tag tag-image">${esc(s.image.split(':')[0])}</span>
+          <span class="tag tag-status ${sc}">${sc}</span>
+          ${nodeTag}
+          ${s.ports?.length ? `<span class="tag">⚡ ${s.ports.slice(0,2).map(p=>typeof p==='object'?`${p.host}:${p.container}`:p).join(', ')}</span>` : ''}
+        </div>
+      </div>
+      <div class="server-resources"><div>${s.cpu_limit} ${parseFloat(s.cpu_limit)===1?"Kern":"Kerne"} · ${s.cpu_percent||100}% CPU</div><div>${s.memory_limit}MB RAM</div>${s.node_name?`<div style="color:var(--text3)">${esc(s.node_name)}</div>`:''}</div>
+      ${actions}
+    </div>`;
+}
+
+async function serverPower(id, action) {
+  try {
+    await API.post(`/servers/${id}/power/${action}`, {});
+    const actionLabels = { start:'▶ Start', stop:'■ Stop', restart:'↺ Neustart', kill:'⚡ Kill' };
+    toast(`${actionLabels[action]||action} Signal gesendet`, 'success');
+    startStatusPoll(id); // Polling starten bis Status stabil
+    if (State.currentPage === 'servers') loadServers();
+    if (State.currentPage === 'server-detail') loadServerDetail(id);
+  } catch (e) {
+    const msg = e.message || '';
+    if (msg.includes('noch nicht fertig') || msg.includes('installiert')) {
+      toast('⏳ Server wird noch installiert — bitte warten', 'warn');
+    } else if (msg.includes('offline') || msg.includes('Node')) {
+      toast('⚠️ Node ist offline', 'warn');
+    } else {
+      toast(msg, 'error');
+    }
+  }
+}
+
+// ─── SERVER DETAIL ────────────────────────────────────────────────────────────
+async function loadServerDetail(id) {
+  let server;
+  try { server = await API.get(`/servers/${id}`); State.server = server; } catch (e) {
+    document.getElementById('page-content').innerHTML = `<div class="empty"><p class="text-danger">Fehler: ${esc(e.message)}</p></div>`; return;
+  }
+  const sc   = server.status;
+  const node = server.node || {};
+
+  // Node-Indikator in Topbar
+  if (node.id) {
+    State.nodes[node.id] = { ...node, connected: server.node_connected };
+    document.getElementById('page-meta').innerHTML = `
+      <div class="node-indicator" data-node-ind="${node.id}">
+        <div class="ndot ${server.node_connected ? (node.is_local ? 'ndot-local' : 'ndot-on') : 'ndot-off'}"></div>
+        <span>${esc(node.name||'Node')}</span>
+        <span class="ni-lbl">${server.node_connected ? (node.is_local ? 'lokal' : 'online') : 'offline'}</span>
+      </div>`;
+  }
+
+  document.getElementById('page-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="navigate('servers')">← Zurück</button>
+    ${sc !== 'running' ? `<button class="btn btn-success btn-sm" onclick="serverPower('${id}','start')">▶ Start</button>` : ''}
+    ${sc === 'running' ? `<button class="btn btn-ghost btn-sm" onclick="serverPower('${id}','restart')">↺ Restart</button>` : ''}
+    ${sc === 'running' ? `<button class="btn btn-danger btn-sm" onclick="serverPower('${id}','stop')">■ Stop</button>` : ''}
+    <button class="btn btn-ghost btn-sm" onclick="showEditServer('${id}')">✏️ Bearbeiten</button>
+    <button class="btn btn-ghost btn-sm" onclick="showCloneServer('${id}','${esc(server.name)}')">⧉ Klonen</button>
+    <button class="btn btn-ghost btn-sm text-danger" onclick="confirmDeleteServer('${id}','${esc(server.name)}')">🗑️</button>`;
+
+  const portsHtml = server.ports?.length ? server.ports.map(p => typeof p==='object'?`${p.host}→${p.container}`:p).join(', ') : 'Keine';
+  const envHtml   = Object.keys(server.env_vars||{}).length
+    ? Object.entries(server.env_vars).map(([k,v]) => `<tr><td class="text-mono text-accent">${esc(k)}</td><td class="text-mono">${esc(v)}</td></tr>`).join('')
+    : '<tr><td colspan="2" class="text-dim">Keine Variablen</td></tr>';
+
+  document.getElementById('page-content').innerHTML = `
+    <div class="tabs" id="detail-tabs">
+      <button class="tab active" onclick="detailTab('console',this)">💬 Konsole</button>
+      <button class="tab" onclick="detailTab('stats',this)">📊 Ressourcen</button>
+      <button class="tab" onclick="detailTab('files',this)">📁 Dateien</button>
+      <button class="tab" id="mods-tab-btn" onclick="detailTab('mods',this)">🧩 Mods / Plugins</button>
+      <button class="tab" onclick="detailTab('info',this)">⚙️ Konfiguration</button>
+      <button class="tab" onclick="detailTab('network',this)">🌐 Netzwerk</button>
+      <button class="tab" onclick="detailTab('schedule',this)">⏰ Tasks</button>
+      <button class="tab" onclick="detailTab('users',this)">👥 Benutzer</button>
+      <button class="tab" onclick="detailTab('activity',this)">📋 Aktivität</button>
+    </div>
+
+    <div id="detail-console">
+      <div class="server-detail-grid">
+        <div>
+          <div class="console-wrap">
+            <div class="console-header">
+              <div class="console-dot" style="background:${sc==='running'?'var(--success)':'var(--text3)'}"></div>
+              <span style="font-size:12px;color:var(--text2);font-family:var(--mono)">${esc(server.name)} — ${sc}</span>
+              <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="clearConsole()">Leeren</button>
+              <button class="btn btn-ghost btn-sm" onclick="reloadLogs('${id}')">↺ Reload</button>
+            </div>
+            <div class="console-output" id="console-output"></div>
+            <div class="console-input-row">
+              <span class="console-prompt">$</span>
+              <input type="text" class="console-input" id="console-input" placeholder="Befehl eingeben..." onkeydown="if(event.key==='Enter')sendConsoleCommand('${id}')"/>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:14px">📊 Live Stats</div>
+            <div class="resource-row"><span class="resource-label">CPU</span><div class="resource-bar"><div class="resource-fill cpu" id="stat-cpu-bar" style="width:0%"></div></div><span class="resource-val" id="stat-cpu-val">0%</span></div>
+            <div class="resource-row"><span class="resource-label">Memory</span><div class="resource-bar"><div class="resource-fill memory" id="stat-mem-bar" style="width:0%"></div></div><span class="resource-val" id="stat-mem-val">0 MB</span></div>
+            <div class="resource-row"><span class="resource-label">PIDs</span><div class="resource-bar"><div class="resource-fill cpu" id="stat-pid-bar" style="width:0%"></div></div><span class="resource-val" id="stat-pid-val">0</span></div>
+            <hr class="divider"/>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2)"><span>↓ RX</span><span class="text-mono" id="stat-rx">0 B</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text2);margin-top:8px"><span>↑ TX</span><span class="text-mono" id="stat-tx">0 B</span></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:8px">🔌 Ports</div>
+            <div class="text-mono text-sm text-accent">${esc(portsHtml)}</div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:10px">⚙️ Limits</div>
+            <div class="text-sm" style="line-height:2">
+              <div class="flex" style="justify-content:space-between"><span class="text-muted">CPU</span><span class="text-mono">${server.cpu_limit} ${parseFloat(server.cpu_limit)===1?"Kern":"Kerne"} @ ${server.cpu_percent||100}%</span></div>
+              <div class="flex" style="justify-content:space-between"><span class="text-muted">RAM</span><span class="text-mono">${server.memory_limit} MB</span></div>
+              <div class="flex" style="justify-content:space-between"><span class="text-muted">Disk</span><span class="text-mono">${server.disk_limit} MB</span></div>
+              <div class="flex" style="justify-content:space-between"><span class="text-muted">Node</span><span class="text-mono text-accent">${esc(node.name||'–')}</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="detail-stats" class="hidden">
+      <!-- Top KPI row -->
+      <div class="stats-kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(0,212,255,.12);color:#00d4ff">⚡</div>
+          <div class="kpi-body">
+            <div class="kpi-label">CPU Auslastung</div>
+            <div class="kpi-value" id="sc-cpu">—</div>
+            <div class="kpi-bar"><div class="kpi-fill kpi-cpu" id="sc-cpu-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(0,245,160,.12);color:#00f5a0">🧠</div>
+          <div class="kpi-body">
+            <div class="kpi-label">Arbeitsspeicher</div>
+            <div class="kpi-value" id="sc-mem">—</div>
+            <div class="kpi-sub" id="sc-mem-limit"></div>
+            <div class="kpi-bar"><div class="kpi-fill kpi-mem" id="sc-mem-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(96,165,250,.12);color:#60a5fa">🌐</div>
+          <div class="kpi-body">
+            <div class="kpi-label">Netzwerk</div>
+            <div class="kpi-value" style="font-size:15px"><span style="color:#00d4ff" id="sc-rx">↓ 0 B</span></div>
+            <div class="kpi-value" style="font-size:15px"><span style="color:#f59e0b" id="sc-tx">↑ 0 B</span></div>
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:rgba(167,139,250,.12);color:#a78bfa">🔢</div>
+          <div class="kpi-body">
+            <div class="kpi-label">Prozesse</div>
+            <div class="kpi-value" id="sc-pids">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts row 1 -->
+      <div class="stats-chart-row">
+        <div class="card stats-chart-card">
+          <div class="stats-chart-header">
+            <span class="stats-chart-title">📈 CPU</span>
+            <span class="stats-chart-badge" id="chart-cpu-cur">0%</span>
+          </div>
+          <div class="chart-container"><canvas id="cpu-chart"></canvas></div>
+        </div>
+        <div class="card stats-chart-card">
+          <div class="stats-chart-header">
+            <span class="stats-chart-title">🧠 Memory</span>
+            <span class="stats-chart-badge" id="chart-mem-cur">0 MB</span>
+          </div>
+          <div class="chart-container"><canvas id="mem-chart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Charts row 2 -->
+      <div class="stats-chart-row" style="margin-top:12px">
+        <div class="card stats-chart-card" style="flex:2">
+          <div class="stats-chart-header">
+            <span class="stats-chart-title">🌐 Netzwerk I/O</span>
+            <div style="display:flex;gap:12px">
+              <span style="color:#00d4ff;font-size:11px">■ RX</span>
+              <span style="color:#f59e0b;font-size:11px">■ TX</span>
+            </div>
+          </div>
+          <div class="chart-container"><canvas id="net-chart"></canvas></div>
+        </div>
+        <div class="card" style="flex:1;min-width:200px">
+          <div class="stats-chart-title" style="margin-bottom:14px">📊 Limits</div>
+          <div class="limits-table">
+            <div class="limits-row"><span>CPU</span><span class="text-mono text-accent" id="limit-cpu">—</span></div>
+            <div class="limits-row"><span>RAM</span><span class="text-mono" id="limit-ram">—</span></div>
+            <div class="limits-row"><span>Disk</span><span class="text-mono" id="limit-disk">—</span></div>
+            <div class="limits-row"><span>Node</span><span class="text-mono text-accent" id="limit-node">—</span></div>
+            <div class="limits-row"><span>Status</span><span class="text-mono text-success" id="stat2-status">—</span></div>
+          </div>
+          <hr class="divider" style="margin:12px 0"/>
+          <div class="limits-table">
+            <div class="limits-row"><span>↓ Gesamt RX</span><span class="text-mono" id="stat2-rx">0 B</span></div>
+            <div class="limits-row"><span>↑ Gesamt TX</span><span class="text-mono" id="stat2-tx">0 B</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="detail-files" class="hidden">
+      <div class="card">
+        <div class="fm-toolbar">
+          <button class="btn btn-ghost btn-sm" id="fm-up-btn" onclick="fmNavigateUp()">↑ Rauf</button>
+          <div class="fm-path" id="fm-path">/home/container</div>
+          <button class="btn btn-ghost btn-sm" onclick="fmRefresh()">↺</button>
+          <button class="btn btn-ghost btn-sm" onclick="fmCreateFile()">＋ Datei</button>
+          <button class="btn btn-ghost btn-sm" onclick="fmCreateDir()">📁 Ordner</button>
+        </div>
+        <div id="fm-content"><div class="empty" style="padding:40px"><div class="spin empty-icon">📁</div><p>Lade Dateien...</p></div></div>
+      </div>
+    </div>
+
+    <div id="detail-mods" class="hidden">
+      <!-- Platform badge + installed list rendered dynamically -->
+      <div id="mods-root"><div class="empty"><div class="spin empty-icon">🧩</div><p>Lade Mod-Manager...</p></div></div>
+    </div>
+
+    <div id="detail-schedule" class="hidden">
+      <div id="schedule-root"><div class="empty"><div class="spin empty-icon">⏰</div><p>Lade Tasks...</p></div></div>
+    </div>
+
+    <div id="detail-users" class="hidden">
+      <div id="users-root"><div class="empty"><div class="spin empty-icon">👥</div><p>Lade Benutzer...</p></div></div>
+    </div>
+
+    <div id="detail-activity" class="hidden">
+      <div id="activity-root"><div class="empty"><div class="spin empty-icon">📋</div><p>Lade Aktivitäten...</p></div></div>
+    </div>
+
+    <div id="detail-network" class="hidden">
+      <div id="network-root"><div class="empty"><div class="spin empty-icon">🌐</div><p>Lade Ports...</p></div></div>
+    </div>
+
+    <div id="detail-info" class="hidden">
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">Umgebungsvariablen</div>
+          <table class="table"><tbody>${envHtml}</tbody></table>
+        </div>
+        <div class="card">
+          <div class="card-title" style="margin-bottom:12px">Server Details</div>
+          <table class="table">
+            <tbody>
+              <tr><td class="text-dim">ID</td><td class="text-mono text-sm">${esc(server.id)}</td></tr>
+              <tr><td class="text-dim">Container</td><td class="text-mono text-sm">${server.container_id ? esc(server.container_id.substring(0,12)) : 'Nicht erstellt'}</td></tr>
+              <tr><td class="text-dim">Node</td><td>${esc(node.name||'–')} <span class="text-dim text-sm">(${esc(node.fqdn||'–')})</span></td></tr>
+              <tr><td class="text-dim">Standort</td><td>${esc(node.location||'–')}</td></tr>
+              <tr><td class="text-dim">Network</td><td class="text-mono">${esc(server.network||'bridge')}</td></tr>
+              <tr><td class="text-dim">Work Dir</td><td class="text-mono">${esc(server.work_dir||'/home/container')}</td></tr>
+              <tr><td class="text-dim">Startup</td><td class="text-mono text-sm">${esc(server.startup_command||'Standard')}</td></tr>
+              <tr><td class="text-dim">Erstellt</td><td class="text-sm">${new Date(server.created_at).toLocaleString('de-DE')}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+
+  // Logs laden + WS abonnieren
+  reloadLogs(id);
+  State.serverDetail = id;
+  // Polling starten wenn Server in transitionalem Zustand
+  if (TRANSITIONAL.has(sc)) startStatusPoll(id); else stopStatusPoll();
+  wsSend({ type: 'subscribe_stats',   server_id: id });
+  wsSend({ type: 'console.subscribe', server_id: id });
+}
+
+function detailTab(tab, btn) {
+  document.querySelectorAll('#detail-tabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ['console','stats','files','mods','info','network','schedule','users','activity'].forEach(x => document.getElementById('detail-'+x)?.classList.toggle('hidden', x!==tab));
+  if (tab === 'files' && State.serverDetail) {
+    const _srv = State.server || {};
+    const _itzg = (_srv.image||'').includes('itzg') || (_srv.image||'').includes('minecraft-server');
+    State.fmPath = _itzg ? '/data' : '/home/container';
+    fmLoad(State.serverDetail, State.fmPath);
+  }
+  if (tab === 'stats') { initCharts(); }
+  if (tab === 'mods' && State.serverDetail) { modsInit(State.serverDetail); }
+  if (tab === 'network' && State.serverDetail) { networkInit(State.serverDetail); }
+  if (tab === 'schedule' && State.serverDetail) { scheduleInit(State.serverDetail); }
+  if (tab === 'users' && State.serverDetail) { subusersInit(State.serverDetail); }
+  if (tab === 'activity' && State.serverDetail) { activityInit(State.serverDetail); }
+}
+
+async function reloadLogs(id) {
+  try {
+    const d = await API.get(`/servers/${id}/logs`);
+    const out = document.getElementById('console-output');
+    if (!out) return;
+    out.innerHTML = '';
+    (d.logs||'').split('\n').filter(Boolean).forEach(line => appendConsoleLine(line));
+    out.scrollTop = out.scrollHeight;
+  } catch {}
+}
+
+function appendConsoleLine(text) {
+  const out = document.getElementById('console-output');
+  if (!out) return;
+  text.split('\n').filter(Boolean).forEach(line => {
+    const el = document.createElement('div');
+    const lower = line.toLowerCase();
+    el.className = 'line' + (lower.includes('error')||lower.includes('fatal')?' error':lower.includes('warn')?' warn':lower.includes('[system]')?' sys':lower.includes('start')||lower.includes('ready')||lower.includes('listen')?' ok':'');
+    el.textContent = line;
+    out.appendChild(el);
+  });
+  out.scrollTop = out.scrollHeight;
+  while (out.children.length > 600) out.removeChild(out.firstChild);
+}
+function clearConsole() { const el = document.getElementById('console-output'); if (el) el.innerHTML = ''; }
+
+async function sendConsoleCommand(id) {
+  const input = document.getElementById('console-input');
+  const cmd = input.value.trim(); if (!cmd) return;
+  input.value = '';
+  // Try WebSocket first (real-time), fall back to REST
+  if (State.wsConn && State.wsConn.readyState === WebSocket.OPEN) {
+    wsSend({ type: 'console.input', server_id: id, command: cmd });
+  } else {
+    appendConsoleLine(`\x1b[33m> ${cmd}\x1b[0m`);
+    try { const d = await API.post(`/servers/${id}/command`, { command: cmd }); if (d.output) appendConsoleLine(d.output); }
+    catch (e) { appendConsoleLine(`Fehler: ${e.message}`); }
+  }
+}
+
+// ─── CHARTS ─────────────────────────────────────────────────────────────────
+let cpuChart = null, memChart = null, netChart = null;
+const chartHistory = { cpu: [], mem: [], rxPrev: 0, txPrev: 0, netRx: [], netTx: [], labels: [] };
+const MAX_POINTS = 60;
+
+function initCharts() {
+  if (!window.Chart) return;
+  const chartDefaults = {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 0 },
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { display: false },
+      y: { min: 0, grid: { color: 'rgba(30,45,74,.5)' }, ticks: { color: '#8fa3c8', font: { family: 'JetBrains Mono', size: 10 } } }
+    },
+  };
+  // CPU Chart
+  const cpuCtx = document.getElementById('cpu-chart')?.getContext('2d');
+  if (cpuCtx) {
+    if (cpuChart) cpuChart.destroy();
+    cpuChart = new Chart(cpuCtx, {
+      type: 'line',
+      data: { labels: chartHistory.labels, datasets: [{ data: chartHistory.cpu, borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,.1)', borderWidth: 2, fill: true, tension: .3, pointRadius: 0 }] },
+      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, max: 100, ticks: { ...chartDefaults.scales.y.ticks, callback: v => v + '%' } } } }
+    });
+  }
+  // Mem Chart
+  const memCtx = document.getElementById('mem-chart')?.getContext('2d');
+  if (memCtx) {
+    if (memChart) memChart.destroy();
+    memChart = new Chart(memCtx, {
+      type: 'line',
+      data: { labels: chartHistory.labels, datasets: [{ data: chartHistory.mem, borderColor: '#00f5a0', backgroundColor: 'rgba(0,245,160,.1)', borderWidth: 2, fill: true, tension: .3, pointRadius: 0 }] },
+      options: { ...chartDefaults, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, ticks: { ...chartDefaults.scales.y.ticks, callback: v => fmtBytes(v * 1024 * 1024) } } } }
+    });
+  }
+  // Net Chart
+  const netCtx = document.getElementById('net-chart')?.getContext('2d');
+  if (netCtx) {
+    if (netChart) netChart.destroy();
+    netChart = new Chart(netCtx, {
+      type: 'line',
+      data: { labels: chartHistory.labels, datasets: [
+        { label: 'RX', data: chartHistory.netRx, borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,.08)', borderWidth: 2, fill: true, tension: .3, pointRadius: 0 },
+        { label: 'TX', data: chartHistory.netTx, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.08)', borderWidth: 2, fill: true, tension: .3, pointRadius: 0 },
+      ] },
+      options: { ...chartDefaults, plugins: { legend: { display: true, labels: { color: '#8fa3c8', font: { size: 11 }, usePointStyle: true } } }, scales: { ...chartDefaults.scales, y: { ...chartDefaults.scales.y, ticks: { ...chartDefaults.scales.y.ticks, callback: v => fmtBytes(v) } } } }
+    });
+  }
+}
+
+function pushChartData(cpu, memMb, netRxDelta, netTxDelta) {
+  const now = new Date().toLocaleTimeString('de', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  if (chartHistory.labels.length >= MAX_POINTS) {
+    chartHistory.labels.shift(); chartHistory.cpu.shift(); chartHistory.mem.shift();
+    chartHistory.netRx.shift(); chartHistory.netTx.shift();
+  }
+  chartHistory.labels.push(now); chartHistory.cpu.push(Math.round(cpu*10)/10);
+  chartHistory.mem.push(Math.round(memMb)); chartHistory.netRx.push(netRxDelta); chartHistory.netTx.push(netTxDelta);
+  if (cpuChart) cpuChart.update('none');
+  if (memChart) memChart.update('none');
+  if (netChart) netChart.update('none');
+  // Update current value labels
+  const cc = document.getElementById('chart-cpu-cur'); if (cc) cc.textContent = cpu.toFixed(1)+'%';
+  const mc = document.getElementById('chart-mem-cur'); if (mc) mc.textContent = fmtBytes(memMb * 1024 * 1024);
+  // Update KPI cards
+  const scCpu = document.getElementById('sc-cpu'); if (scCpu) scCpu.textContent = cpu.toFixed(1)+'%';
+  const scCpuBar = document.getElementById('sc-cpu-bar'); if (scCpuBar) { scCpuBar.style.width=Math.min(cpu,100)+'%'; scCpuBar.className='kpi-fill kpi-cpu'+(cpu>80?' danger':''); }
+  const scMem = document.getElementById('sc-mem'); if (scMem) scMem.textContent = fmtBytes(memMb*1024*1024);
+  const scMemSub = document.getElementById('sc-mem-limit'); if (scMemSub&&chartHistory._memLimit) scMemSub.textContent = 'von '+fmtBytes(chartHistory._memLimit*1024*1024);
+  const scMemBar = document.getElementById('sc-mem-bar'); if (scMemBar) { const p=memMb>0&&chartHistory._memLimit>0?Math.min(100,memMb/chartHistory._memLimit*100):0; scMemBar.style.width=p+'%'; }
+}
+
+function handleWsStats(msg) {
+  if (msg.server_id !== State.serverDetail) return;
+  const d = msg.data;
+  // ── Sidebar stats bar ────────────────────────────────────────────────────────
+  const cpuEl = document.getElementById('stat-cpu-val'), cpuBar = document.getElementById('stat-cpu-bar');
+  const memEl = document.getElementById('stat-mem-val'), memBar = document.getElementById('stat-mem-bar');
+  const pidEl = document.getElementById('stat-pid-val'), pidBar = document.getElementById('stat-pid-bar');
+  const rxEl = document.getElementById('stat-rx'), txEl = document.getElementById('stat-tx');
+  const cpu = Math.min(d.cpu||0, 100);
+  if (cpuEl) { cpuEl.textContent = cpu.toFixed(1)+'%'; cpuBar.style.width = cpu+'%'; cpuBar.className = 'resource-fill '+(cpu>80?'danger':'cpu'); }
+  const memMb = d.memory_limit > 0 ? d.memory / 1024 / 1024 : 0;
+  const memLimitMb = (d.memory_limit || 0) / 1024 / 1024;
+  chartHistory._memLimit = memLimitMb || 512;
+  if (memEl && d.memory_limit > 0) {
+    const pct = (d.memory / d.memory_limit * 100);
+    memEl.textContent = fmtBytes(d.memory)+' / '+fmtBytes(d.memory_limit);
+    memBar.style.width = Math.min(pct,100)+'%'; memBar.className = 'resource-fill '+(pct>80?'danger':'memory');
+  }
+  if (pidEl && d.pids !== undefined) { pidEl.textContent = d.pids; pidBar.style.width = Math.min(d.pids/256*100,100)+'%'; }
+  if (rxEl) rxEl.textContent = fmtBytes(d.network_rx);
+  if (txEl) txEl.textContent = fmtBytes(d.network_tx);
+  // ── Stats tab extended ─────────────────────────────────────────────────────
+  const s2cpu = document.getElementById('stat2-cpu-val'); if(s2cpu){s2cpu.textContent=cpu.toFixed(1)+'%';document.getElementById('stat2-cpu-bar').style.width=cpu+'%';}
+  const s2mem = document.getElementById('stat2-mem-val'); if(s2mem && d.memory_limit>0){s2mem.textContent=fmtBytes(d.memory)+' / '+fmtBytes(d.memory_limit);const p=(d.memory/d.memory_limit*100);document.getElementById('stat2-mem-bar').style.width=Math.min(p,100)+'%';}
+  const s2rx = document.getElementById('stat2-rx'); if(s2rx) s2rx.textContent=fmtBytes(d.network_rx);
+  const s2tx = document.getElementById('stat2-tx'); if(s2tx) s2tx.textContent=fmtBytes(d.network_tx);
+  const s2p = document.getElementById('stat2-pids'); if(s2p) s2p.textContent=d.pids||'0';
+  const s2s = document.getElementById('stat2-status'); if(s2s) s2s.textContent=d.status||'running';
+  // ── Chart data ─────────────────────────────────────────────────────────────
+  const rxDelta = Math.max(0, (d.network_rx||0) - chartHistory.rxPrev);
+  const txDelta = Math.max(0, (d.network_tx||0) - chartHistory.txPrev);
+  chartHistory.rxPrev = d.network_rx||0; chartHistory.txPrev = d.network_tx||0;
+  pushChartData(cpu, memMb, rxDelta, txDelta);
+}
+function handleWsConsole(msg) { if (msg.server_id === State.serverDetail) appendConsoleLine(msg.data); }
+
+// ─── FILE MANAGER ─────────────────────────────────────────────────────────────
+State.fmPath = '/home/container';
+
+async function fmLoad(serverId, path) {
+  const el = document.getElementById('fm-content'); if (!el) return;
+  const pathEl = document.getElementById('fm-path');
+  if (pathEl) {
+    const _root = ((State.server?.image||'').includes('itzg') || (State.server?.image||'').includes('minecraft-server')) ? '/data' : '/home/container';
+    if (path === _root) {
+      pathEl.textContent = '/';
+    } else if (path.startsWith(_root + '/')) {
+      pathEl.textContent = path.slice(_root.length); // z.B. /plugins statt /data/plugins
+    } else {
+      pathEl.textContent = path;
+    }
+  }
+  el.innerHTML = '<div class="empty" style="padding:24px"><div class="spin">📁</div></div>';
+  try {
+    const files = await API.get(`/servers/${serverId}/files/list?path=${encodeURIComponent(path)}`);
+    if (!document.getElementById('fm-content')) return; // navigated away
+    el.innerHTML = fmRenderTable(files, serverId, path);
+  } catch (e) {
+    const msg = e.message || '';
+    const isNotReady = msg.includes('nicht bereit') || msg.includes('Container') || msg.includes('400');
+    el.innerHTML = `<div class="empty" style="padding:32px">
+      <div class="empty-icon">${isNotReady ? '⏳' : '❌'}</div>
+      <p>${isNotReady ? 'Container ist noch nicht bereit — Server zuerst starten' : esc(msg)}</p>
+      ${isNotReady ? '' : `<button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="fmLoad('${serverId}','${path}')">↺ Erneut versuchen</button>`}
+    </div>`;
+  }
+}
+
+function fmRenderTable(files, serverId, path) {
+  if (!files.length) return '<div class="empty" style="padding:24px"><div class="empty-icon">📂</div><p>Verzeichnis ist leer</p></div>';
+  const sorted = [...files].sort((a,b) => {
+    if (a.type==='directory' && b.type!=='directory') return -1;
+    if (a.type!=='directory' && b.type==='directory') return 1;
+    return a.name.localeCompare(b.name);
+  });
+  return `<table class="fm-table">
+    <thead><tr><th>Name</th><th>Größe</th><th>Geändert</th><th style="width:80px"></th></tr></thead>
+    <tbody>
+      ${(() => {
+    const _srvRoot = ((State.server?.image||'').includes('itzg') || (State.server?.image||'').includes('minecraft-server')) ? '/data' : '/home/container';
+    return path !== _srvRoot ? `<tr onclick="fmNavigateUp()" style="cursor:pointer"><td colspan="4"><span class="fm-icon">⬆️</span><span class="fm-name dir">..</span></td></tr>` : '';
+  })()}
+      ${sorted.map(f => {
+        const icon = f.type==='directory'?'📁':f.name.endsWith('.yml')||f.name.endsWith('.yaml')?'⚙️':f.name.endsWith('.json')?'📋':f.name.endsWith('.log')?'📜':f.name.endsWith('.sh')?'⚡':'📄';
+        const isDir = f.type==='directory';
+        const click = isDir
+          ? `fmNavigate('${serverId}','${(path.endsWith('/')?path:path+'/').replace(/\/\//g,'/')}${f.name}')`
+          : `fmOpenFile('${serverId}','${(path.endsWith('/')?path:path+'/').replace(/\/\//g,'/')}${f.name}')`;
+        return `<tr>
+          <td onclick="${click}"><span class="fm-icon">${icon}</span><span class="fm-name ${isDir?'dir':''}">${esc(f.name)}</span></td>
+          <td class="fm-size">${isDir?'–':fmtBytes(f.size)}</td>
+          <td class="fm-date">${f.modified||'–'}</td>
+          <td><div class="fm-actions">
+            ${!isDir?`<button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();fmOpenFile('${serverId}','${(path.endsWith('/')?path:path+'/').replace(/\/\//g,'/')}${f.name}')">✏️</button>`:''}
+            <button class="btn btn-ghost btn-xs text-danger" onclick="event.stopPropagation();fmDelete('${serverId}','${(path.endsWith('/')?path:path+'/').replace(/\/\//g,'/')}${f.name}','${f.type}')">🗑</button>
+          </div></td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+}
+
+function fmNavigate(serverId, newPath) {
+  State.fmPath = newPath.replace(/\/\//g, '/');
+  const pathEl = document.getElementById('fm-path'); if (pathEl) pathEl.textContent = State.fmPath;
+  fmLoad(serverId, State.fmPath);
+}
+
+function fmNavigateUp() {
+  if (!State.serverDetail) return;
+  // Root für diesen Server ermitteln
+  const srvRoot = ((State.server?.image||'').includes('itzg') || (State.server?.image||'').includes('minecraft-server'))
+    ? '/data' : '/home/container';
+  // Nicht über das Server-Root hinaus navigieren
+  if (State.fmPath === srvRoot || State.fmPath === '/') return;
+  const parts = State.fmPath.split('/').filter(Boolean);
+  parts.pop();
+  const newPath = '/' + parts.join('/');
+  State.fmPath = newPath.length <= srvRoot.length ? srvRoot : newPath;
+  fmLoad(State.serverDetail, State.fmPath);
+}
+
+function fmRefresh() { if (State.serverDetail) fmLoad(State.serverDetail, State.fmPath); }
+
+async function fmOpenFile(serverId, filePath) {
+  try {
+    const data = await API.get(`/servers/${serverId}/files/read?path=${encodeURIComponent(filePath)}`);
+    showModal(`
+      <div class="modal-title">
+        <span>✏️ ${esc(filePath.split('/').pop())}</span>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="form-group">
+        <label class="form-label text-mono" style="color:var(--text3)">${esc(filePath)}</label>
+        <textarea id="fm-edit-content" class="form-input" style="height:360px;font-family:var(--mono);font-size:12px;line-height:1.6">${esc(data.content)}</textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button class="btn btn-primary" onclick="fmSaveFile('${serverId}','${filePath}')">💾 Speichern</button>
+      </div>`, true);
+  } catch (e) { toast('Fehler: '+e.message,'error'); }
+}
+
+async function fmSaveFile(serverId, filePath) {
+  const content = document.getElementById('fm-edit-content')?.value;
+  if (content === undefined) return;
+  try {
+    await API.post(`/servers/${serverId}/files/write`, { path: filePath, content });
+    toast('Gespeichert!', 'success'); closeModal();
+  } catch (e) { toast('Fehler: '+e.message,'error'); }
+}
+
+async function fmCreateFile() {
+  if (!State.serverDetail) return;
+  const name = prompt('Dateiname:'); if (!name) return;
+  const path = (State.fmPath.endsWith('/')?State.fmPath:State.fmPath+'/') + name;
+  try {
+    await API.post(`/servers/${State.serverDetail}/files/create`, { path, type: 'file' });
+    toast('Datei erstellt', 'success'); fmRefresh();
+  } catch (e) { toast('Fehler: '+e.message,'error'); }
+}
+
+async function fmCreateDir() {
+  if (!State.serverDetail) return;
+  const name = prompt('Ordnername:'); if (!name) return;
+  const path = (State.fmPath.endsWith('/')?State.fmPath:State.fmPath+'/') + name;
+  try {
+    await API.post(`/servers/${State.serverDetail}/files/create`, { path, type: 'directory' });
+    toast('Ordner erstellt', 'success'); fmRefresh();
+  } catch (e) { toast('Fehler: '+e.message,'error'); }
+}
+
+async function fmDelete(serverId, path, type) {
+  if (!confirm(`${type==='directory'?'Ordner':'Datei'} "${path.split('/').pop()}" wirklich löschen?`)) return;
+  try {
+    await API.delete(`/servers/${serverId}/files/delete`, { path });
+    toast('Gelöscht', 'success'); fmLoad(serverId, State.fmPath);
+  } catch (e) { toast('Fehler: '+e.message,'error'); }
+}
+
+// ─── SERVER ERSTELLEN ─────────────────────────────────────────────────────────
+async function showCreateServer(preEgg) {
+  const [nodes, eggs, allocs] = await Promise.all([
+    API.get('/nodes').catch(() => []),
+    API.get('/eggs').catch(() => []),
+    API.get('/allocations').catch(() => []),
+  ]);
+  const nodeOptions = nodes.map(n => {
+    const on = n.connected;
+    return `<option value="${n.id}" ${!on?'disabled':''}>${esc(n.name)} — ${esc(n.fqdn)} ${n.is_local?'(Lokal)':''} ${!on?'[offline]':'✓'}</option>`;
+  }).join('');
+
+  const eggOptions = `<option value="">— Kein Template —</option>` + eggs.map(e => `<option value="${e.id}" ${preEgg?.id===e.id?'selected':''}>${e.icon} ${esc(e.name)} (${esc(e.docker_image.split(':')[0])})</option>`).join('');
+  showModal(`
+    <div class="modal-title"><span>＋ Neuer Server</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    ${nodes.filter(n=>n.connected).length===0 ? `<div class="warn-msg">⚠️ Keine Online-Nodes. ${State.user.role==='admin'?'<button class="btn btn-ghost btn-xs" onclick="closeModal();navigate(\'admin-nodes\')">→ Nodes einrichten</button>':'Kontaktiere den Admin.'}</div>` : ''}
+    <div class="form-group">
+      <label class="form-label">🐣 Egg / Template</label>
+      <select id="m-egg" class="form-input" onchange="onEggSelect(this.value)">
+        ${eggOptions}
+      </select>
+    </div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Server Name *</label><input type="text" id="m-name" class="form-input" placeholder="Mein Minecraft Server"/></div>
+      <div class="form-group"><label class="form-label">Docker Image *</label><input type="text" id="m-image" class="form-input" value="${preEgg?esc(preEgg.docker_image):''}"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Node *</label><select id="m-node" class="form-input">${nodeOptions}</select></div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="m-desc" class="form-input" placeholder="Optional"/></div>
+    <div class="grid grid-3">
+      <div class="form-group"><label class="form-label">CPU Kerne</label>
+        <select id="m-cpu" class="form-input">
+          <option value="0.5">0.5 Kerne</option>
+          <option value="1" selected>1 Kern</option>
+          <option value="2">2 Kerne</option>
+          <option value="4">4 Kerne</option>
+          <option value="6">6 Kerne</option>
+          <option value="8">8 Kerne</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">CPU Auslastung %</label>
+        <select id="m-cpu-pct" class="form-input">
+          <option value="25">25%</option>
+          <option value="50">50%</option>
+          <option value="75">75%</option>
+          <option value="100" selected>100%</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">RAM (MB)</label><input type="number" id="m-mem" class="form-input" value="512" min="64"/></div>
+      <div class="form-group"><label class="form-label">Disk (MB)</label><input type="number" id="m-disk" class="form-input" value="5120" min="512"/></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Port Allocations</span>
+        <span id="m-ports-hint" class="text-muted" style="font-size:11px">Aus Allocations wählen oder manuell eingeben</span>
+      </label>
+      <div id="m-alloc-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:28px"></div>
+      <input type="text" id="m-ports" class="form-input" placeholder="25565:25565, 25575:25575 (oder oben wählen)"/>
+    </div>
+    <div id="m-minecraft-opts" class="hidden">
+      <div class="grid grid-2">
+        <div class="form-group">
+          <label class="form-label">☕ Minecraft Version</label>
+          <select id="m-mc-version" class="form-input">
+            <option value="LATEST">LATEST (aktuellste)</option>
+            <option value="1.21.4">1.21.4</option>
+            <option value="1.21.3">1.21.3</option>
+            <option value="1.21.1">1.21.1</option>
+            <option value="1.20.6">1.20.6</option>
+            <option value="1.20.4">1.20.4</option>
+            <option value="1.20.1">1.20.1</option>
+            <option value="1.19.4">1.19.4</option>
+            <option value="1.19.2">1.19.2</option>
+            <option value="1.18.2">1.18.2</option>
+            <option value="1.17.1">1.17.1</option>
+            <option value="1.16.5">1.16.5</option>
+            <option value="1.12.2">1.12.2</option>
+            <option value="1.8.9">1.8.9</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Server-Typ</label>
+          <select id="m-mc-type" class="form-input">
+            <option value="PAPER">Paper (empfohlen)</option>
+            <option value="VANILLA">Vanilla</option>
+            <option value="SPIGOT">Spigot</option>
+            <option value="FABRIC">Fabric</option>
+            <option value="FORGE">Forge</option>
+            <option value="QUILT">Quilt</option>
+            <option value="PURPUR">Purpur</option>
+            <option value="BUNGEECORD">BungeeCord</option>
+            <option value="VELOCITY">Velocity</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Startup-Befehl (optional)</label><input type="text" id="m-cmd" class="form-input" placeholder="java -jar server.jar"/></div>
+    <div class="form-group"><label class="form-label">Umgebungsvariablen (KEY=VALUE, eine pro Zeile)</label><textarea id="m-env" class="form-input" rows="3" placeholder="EULA=TRUE\nMEMORY=512M"></textarea></div>
+    ${State.user.role==='admin'?`<div class="form-group"><label class="form-label">Besitzer (User-ID, leer = du selbst)</label><input type="text" id="m-userid" class="form-input" placeholder="User-ID (optional)"/></div>`:''}
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitCreateServer()">Server erstellen</button>
+    </div>`, true);
+
+  // Freie Port-Allocations als klickbare Badges rendern
+  const allocEl = document.getElementById('m-alloc-list');
+  if (allocEl) {
+    const free = (allocs || []).filter(a => !a.server_id);
+    if (free.length === 0) {
+      allocEl.innerHTML = '<span class="text-muted" style="font-size:12px">Keine freien Allocations — unter Admin → Port Allocations anlegen</span>';
+    } else {
+      allocEl.innerHTML = free.map(a =>
+        `<span data-selected="0" onclick="toggleAlloc(this,${a.port})"
+          style="cursor:pointer;background:var(--card2);color:var(--success);border:1px solid var(--success);padding:3px 10px;border-radius:4px;font-size:12px;transition:background .15s"
+        >${a.alias ? esc(a.alias)+' ' : ''}${a.ip||'0.0.0.0'}:${a.port}</span>`
+      ).join('');
+    }
+  }
+}
+
+async function onEggSelect(eggId) {
+  if (!eggId) return;
+  try {
+    const egg = await API.get(`/eggs/${eggId}`);
+    const imgEl = document.getElementById('m-image');
+    const cmdEl = document.getElementById('m-cmd');
+    const envEl = document.getElementById('m-env');
+    const mcOpts = document.getElementById('m-minecraft-opts');
+    if (imgEl && egg.docker_image) imgEl.value = egg.docker_image;
+    if (cmdEl && egg.startup_command) cmdEl.value = egg.startup_command;
+    if (envEl && egg.env_vars?.length) {
+      envEl.value = egg.env_vars.map(v => `${v.key}=${v.default||''}`).join('\n');
+    }
+    // Minecraft-Optionen ein-/ausblenden
+    const isMinecraft = egg.category === 'minecraft' || egg.docker_image.includes('minecraft');
+    if (mcOpts) mcOpts.classList.toggle('hidden', !isMinecraft);
+    toast(`Template "${egg.name}" geladen`, 'info');
+  } catch {}
+}
+
+async function submitCreateServer() {
+  const name = document.getElementById('m-name').value.trim();
+  const image = document.getElementById('m-image').value.trim();
+  const node_id = document.getElementById('m-node')?.value;
+  if (!name || !image) { mErr('Name und Image sind erforderlich'); return; }
+
+  const portsRaw = document.getElementById('m-ports').value.trim();
+  const ports = portsRaw ? portsRaw.split(',').map(p => {
+    const [h,c] = p.trim().split(':');
+    return c ? { host: parseInt(h), container: parseInt(c) } : { host: parseInt(h), container: parseInt(h) };
+  }) : [];
+  const envRaw = document.getElementById('m-env').value.trim();
+  const env_vars = {};
+  if (envRaw) envRaw.split('\n').forEach(line => { const [k,...v]=line.split('='); if(k&&v.length) env_vars[k.trim()]=v.join('=').trim(); });
+  // Minecraft VERSION + TYPE aus den Dropdowns einfügen (überschreiben ENV-Zeile falls vorhanden)
+  const mcVersionEl = document.getElementById('m-mc-version');
+  const mcTypeEl    = document.getElementById('m-mc-type');
+  const mcOptsEl    = document.getElementById('m-minecraft-opts');
+  if (mcVersionEl && mcOptsEl && !mcOptsEl.classList.contains('hidden')) {
+    env_vars['VERSION'] = mcVersionEl.value;
+    env_vars['TYPE']    = mcTypeEl?.value || 'PAPER';
+    env_vars['EULA']    = 'TRUE';
+  }
+
+  const body = {
+    name, image, node_id,
+    description:     document.getElementById('m-desc').value.trim(),
+    cpu_limit:       parseFloat(document.getElementById('m-cpu').value)||1,
+    cpu_percent:     parseInt(document.getElementById('m-cpu-pct')?.value)||100,
+    memory_limit:    parseInt(document.getElementById('m-mem').value)||512,
+    disk_limit:      parseInt(document.getElementById('m-disk').value)||5120,
+    startup_command: document.getElementById('m-cmd').value.trim(),
+    ports, env_vars,
+  };
+  const uidEl = document.getElementById('m-userid');
+  if (uidEl?.value.trim()) body.user_id = uidEl.value.trim();
+
+  try {
+    const srv = await API.post('/servers', body);
+    toast('Server wird erstellt...', 'success');
+    closeModal();
+    navigate('server-detail', srv.id);
+    loadServerCount();
+  } catch (e) { mErr(e.message); }
+}
+
+async function showEditServer(id) {
+  const s = await API.get(`/servers/${id}`);
+  showModal(`
+    <div class="modal-title"><span>✏️ Server bearbeiten</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label class="form-label">Name</label><input type="text" id="m-name" class="form-input" value="${esc(s.name)}"/></div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><input type="text" id="m-desc" class="form-input" value="${esc(s.description||'')}"/></div>
+    <div class="grid grid-3">
+      <div class="form-group"><label class="form-label">CPU (%)</label><input type="number" id="m-cpu" class="form-input" value="${s.cpu_limit}"/></div>
+      <div class="form-group"><label class="form-label">RAM (MB)</label><input type="number" id="m-mem" class="form-input" value="${s.memory_limit}"/></div>
+      <div class="form-group"><label class="form-label">Startup</label><input type="text" id="m-cmd" class="form-input" value="${esc(s.startup_command||'')}"/></div>
+    </div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitEditServer('${id}')">Speichern</button>
+    </div>`);
+}
+async function submitEditServer(id) {
+  try {
+    await API.patch(`/servers/${id}`, { name:document.getElementById('m-name').value.trim(), description:document.getElementById('m-desc').value.trim(), cpu_limit:parseInt(document.getElementById('m-cpu').value), memory_limit:parseInt(document.getElementById('m-mem').value), startup_command:document.getElementById('m-cmd').value.trim() });
+    toast('Gespeichert!','success'); closeModal(); navigate('server-detail',id);
+  } catch (e) { mErr(e.message); }
+}
+function confirmDeleteServer(id, name) {
+  showModal(`
+    <div class="modal-title"><span style="color:var(--danger)">🗑️ Server löschen</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p>Server <strong>${esc(name)}</strong> und den Container permanent löschen?</p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-danger" onclick="deleteServer('${id}')">Endgültig löschen</button>
+    </div>`);
+}
+async function deleteServer(id) {
+  try { await API.delete(`/servers/${id}`); toast('Server gelöscht','success'); closeModal(); navigate('servers'); loadServerCount(); } catch (e) { toast(e.message,'error'); }
+}
+
+// ─── ADMIN: NODES (v2 vollständig) ───────────────────────────────────────────
+async function loadAdminNodes() {
+  document.getElementById('page-actions').innerHTML = `<button class="btn btn-primary" onclick="showCreateNode()">＋ Node hinzufügen</button>`;
+  const nodes = await API.get('/nodes').catch(() => []);
+  nodes.forEach(n => { State.nodes[n.id] = n; });
+
+  if (nodes.length === 0) {
+    document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon">🌐</div><h3>Keine Nodes</h3><p>Füge deinen ersten Node hinzu und starte den Daemon darauf.</p><button class="btn btn-primary" style="margin-top:16px" onclick="showCreateNode()">＋ Node hinzufügen</button></div>`;
+    return;
+  }
+
+  const html = nodes.map(n => {
+    const on = n.connected;
+    const si = n.system_info || {};
+    const memGB = si.memory_total ? (si.memory_total/1024**3).toFixed(1)+'GB' : '?';
+    return `
+      <div class="node-card ${on ? (n.is_local?'local':'online') : 'offline'}">
+        <div class="node-header">
+          <div>
+            <div class="node-name">${esc(n.name)} ${n.is_local?'<span class="chip chip-local text-xs">Lokal</span>':''} ${n.is_default?'<span class="chip chip-offline text-xs">⭐ Standard</span>':''}</div>
+            <div class="node-fqdn">${esc(n.fqdn)}</div>
+            <div class="text-dim text-xs" style="margin-top:3px">${esc(n.location)}</div>
+          </div>
+          <span class="chip ${on ? (n.is_local?'chip-local':'chip-online') : 'chip-offline'}">${n.is_local ? '⚡ Lokal' : on ? '● Online' : '○ Offline'}</span>
+        </div>
+        ${on && si.cpus ? `
+          <div class="node-stats-row">
+            <div class="node-stat"><div class="node-stat-val">${si.cpus}</div><div class="node-stat-lbl">CPUs</div></div>
+            <div class="node-stat"><div class="node-stat-val">${memGB}</div><div class="node-stat-lbl">RAM</div></div>
+            <div class="node-stat"><div class="node-stat-val">${si.containers_running||0}</div><div class="node-stat-lbl">Container</div></div>
+            <div class="node-stat"><div class="node-stat-val">${n.server_count||0}</div><div class="node-stat-lbl">Server</div></div>
+          </div>
+          ${si.os ? `<div class="text-dim text-xs mt-8">🐧 ${esc(si.os)} • Docker ${esc(si.docker_version||'?')} • ${esc(si.hostname||'')}</div>` : ''}
+        ` : !on && !n.is_local ? `<div class="warn-msg" style="margin:10px 0 0">Daemon nicht verbunden. Starte den Daemon auf dem Node-Server.</div>` : ''}
+        <div class="node-actions">
+          ${!n.is_local?`<button class="btn btn-ghost btn-sm" onclick="showNodeImages('${n.id}','${esc(n.name)}')">🐳 Images</button>`:''}
+          ${!n.is_local?`<button class="btn btn-ghost btn-sm" onclick="showRotateToken('${n.id}','${esc(n.name)}')">🔄 Token</button>`:''}
+          <button class="btn btn-ghost btn-sm" onclick="showEditNode('${n.id}')">✏️ Edit</button>
+          ${!n.is_local?`<button class="btn btn-ghost btn-sm text-danger" onclick="confirmDeleteNode('${n.id}','${esc(n.name)}')">🗑️</button>`:''}
+        </div>
+        <div class="mt-8 text-xs" style="display:flex;justify-content:space-between">
+          ${!n.is_local ? `<span class="text-dim">Token: <span class="text-mono text-accent">${esc(n.token_prefix||'?')}…</span></span>` : '<span></span>'}
+          ${n.last_seen ? `<span class="text-dim">Zuletzt: ${new Date(n.last_seen).toLocaleString('de-DE')}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('page-content').innerHTML = `<div class="grid grid-2">${html}</div>`;
+}
+
+function showCreateNode() {
+  showModal(`
+    <div class="modal-title"><span>＋ Neuer Node</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="info-msg">Nach dem Erstellen erhältst du ein Token, das du <strong>nur einmal</strong> siehst. Sofort kopieren!</div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Name *</label><input type="text" id="m-nname" class="form-input" placeholder="EU-Node-1"/></div>
+      <div class="form-group"><label class="form-label">FQDN / IP *</label><input type="text" id="m-fqdn" class="form-input" placeholder="node1.example.com oder 1.2.3.4"/></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Standort</label><input type="text" id="m-loc" class="form-input" value="Default" placeholder="Frankfurt, DE"/></div>
+      <div class="form-group"><label class="form-label">Max. RAM (MB)</label><input type="number" id="m-nmem" class="form-input" value="4096"/></div>
+    </div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div id="node-result" class="hidden"></div>
+    <div class="modal-footer" id="m-ft">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitCreateNode()">Node erstellen</button>
+    </div>`, true);
+}
+
+async function submitCreateNode() {
+  const name = document.getElementById('m-nname').value.trim();
+  const fqdn = document.getElementById('m-fqdn').value.trim();
+  if (!name || !fqdn) { mErr('Name und FQDN erforderlich'); return; }
+  try {
+    const d = await API.post('/nodes', { name, fqdn, location: document.getElementById('m-loc').value.trim()||'Default', memory_mb: parseInt(document.getElementById('m-nmem').value)||4096 });
+    document.getElementById('m-error').classList.add('hidden');
+    document.getElementById('m-ft').innerHTML = `<button class="btn btn-primary" onclick="closeModal();navigate('admin-nodes')">Fertig → Nodes anzeigen</button>`;
+    document.getElementById('node-result').innerHTML = `
+      <div class="success-msg">✅ Node <strong>${esc(d.name)}</strong> erstellt!</div>
+      <div class="setup-box">
+        <h4>🔑 Token (nur jetzt sichtbar!)</h4>
+        <div class="token-box">${esc(d.token)}</div>
+        <h4 style="margin-top:16px">📋 Daemon starten</h4>
+        <div class="env-display">
+          <span class="env-key">NODE_ID</span>=<span class="env-val">"${esc(d.id)}"</span><br>
+          <span class="env-key">NODE_TOKEN</span>=<span class="env-val">"${esc(d.token)}"</span><br>
+          <span class="env-key">PANEL_URL</span>=<span class="env-val">"ws://&lt;dein-panel-ip&gt;:3000"</span>
+        </div>
+        <div class="code-box">cd daemon && npm install && node daemon.js</div>
+      </div>`;
+    document.getElementById('node-result').classList.remove('hidden');
+    loadAdminNodes();
+  } catch (e) { mErr(e.message); }
+}
+
+async function showRotateToken(id, name) {
+  showModal(`
+    <div class="modal-title"><span>🔄 Token rotieren</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="warn-msg">Achtung: Der Daemon auf <strong>${esc(name)}</strong> muss danach neu gestartet werden!</div>
+    <div id="rotate-result" class="hidden"></div>
+    <div class="modal-footer" id="rotate-ft">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-warn" onclick="doRotateToken('${id}')">Neues Token generieren</button>
+    </div>`);
+}
+async function doRotateToken(id) {
+  try {
+    const d = await API.post(`/nodes/${id}/rotate-token`, {});
+    document.getElementById('rotate-ft').innerHTML = `<button class="btn btn-primary" onclick="closeModal()">Fertig</button>`;
+    document.getElementById('rotate-result').innerHTML = `
+      <div class="success-msg mt-8">Neues Token generiert!</div>
+      <div class="setup-box">
+        <h4>Neues Token</h4><div class="token-box">${esc(d.token)}</div>
+        <div class="code-box" style="margin-top:12px">NODE_TOKEN="${esc(d.token)}" node daemon.js</div>
+      </div>`;
+    document.getElementById('rotate-result').classList.remove('hidden');
+  } catch (e) { mErr(e.message); }
+}
+
+async function showNodeImages(id, name) {
+  showModal(`<div class="modal-title"><span>🐳 Images — ${esc(name)}</span><button class="modal-close" onclick="closeModal()">✕</button></div><div class="empty" style="padding:32px"><div class="spin">⚙️</div></div>`, true);
+  try {
+    const images = await API.get(`/nodes/${id}/images`);
+    document.querySelector('.modal').innerHTML = `
+      <div class="modal-title"><span>🐳 Images — ${esc(name)}</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+      <div style="display:flex;gap:8px;margin-bottom:14px"><input type="text" id="pull-img" class="form-input flex-1" placeholder="nginx:latest"/><button class="btn btn-primary" onclick="doPullOnNode('${id}')">⬇ Pull</button></div>
+      <div id="pull-status"></div>
+      <div style="max-height:360px;overflow-y:auto">
+        <table class="table"><thead><tr><th>Image</th><th>Größe</th><th>ID</th></tr></thead>
+        <tbody>${images.map(img => `<tr><td class="text-mono text-accent text-sm">${esc((img.tags||['<none>']).join(', '))}</td><td class="text-mono">${fmtBytes(img.size||0)}</td><td class="text-mono text-dim text-sm">${esc(img.id||'')}</td></tr>`).join('')}</tbody></table>
+      </div>
+      <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Schließen</button></div>`;
+  } catch (e) { document.querySelector('.modal').querySelector('.empty').innerHTML = `<p class="text-danger">${esc(e.message)}</p>`; }
+}
+async function doPullOnNode(nodeId) {
+  const img = document.getElementById('pull-img').value.trim(); if (!img) return;
+  const st = document.getElementById('pull-status');
+  st.innerHTML = `<div class="info-msg">⏳ Ziehe ${esc(img)}...</div>`;
+  try { await API.post(`/nodes/${nodeId}/images/pull`, { image: img }); st.innerHTML = `<div class="success-msg">✅ ${esc(img)} gepullt!</div>`; } catch (e) { st.innerHTML = `<div class="error-msg">❌ ${esc(e.message)}</div>`; }
+}
+
+async function showEditNode(id) {
+  const nodes = await API.get('/nodes'); const n = nodes.find(x=>x.id===id); if(!n) return;
+  showModal(`
+    <div class="modal-title"><span>✏️ Node bearbeiten</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Name</label><input type="text" id="m-nname" class="form-input" value="${esc(n.name)}"/></div>
+      <div class="form-group"><label class="form-label">Standort</label><input type="text" id="m-loc" class="form-input" value="${esc(n.location)}"/></div>
+    </div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Max. RAM (MB)</label><input type="number" id="m-nmem" class="form-input" value="${n.memory_mb}"/></div>
+      <div class="form-group"><label class="form-label">Max. Disk (MB)</label><input type="number" id="m-ndisk" class="form-input" value="${n.disk_mb}"/></div>
+    </div>
+    <div class="form-group"><label class="form-label"><input type="checkbox" id="m-def" ${n.is_default?'checked':''}/> Als Standard-Node setzen</label></div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitEditNode('${id}')">Speichern</button>
+    </div>`);
+}
+async function submitEditNode(id) {
+  try {
+    await API.patch(`/nodes/${id}`, { name:document.getElementById('m-nname').value.trim(), location:document.getElementById('m-loc').value.trim(), memory_mb:parseInt(document.getElementById('m-nmem').value), disk_mb:parseInt(document.getElementById('m-ndisk').value), is_default:document.getElementById('m-def').checked });
+    toast('Node gespeichert!','success'); closeModal(); navigate('admin-nodes');
+  } catch (e) { mErr(e.message); }
+}
+function confirmDeleteNode(id, name) {
+  showModal(`
+    <div class="modal-title"><span style="color:var(--danger)">🗑️ Node löschen</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p>Node <strong>${esc(name)}</strong> löschen? Alle Server müssen zuerst entfernt werden.</p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-danger" onclick="doDeleteNode('${id}')">Löschen</button>
+    </div>`);
+}
+async function doDeleteNode(id) {
+  try { await API.delete(`/nodes/${id}`); toast('Node gelöscht','success'); closeModal(); navigate('admin-nodes'); } catch (e) { toast(e.message,'error'); closeModal(); }
+}
+
+// ─── ADMIN: USERS ────────────────────────────────────────────────────────────
+async function loadAdminUsers() {
+  document.getElementById('page-actions').innerHTML = `<button class="btn btn-primary" onclick="showCreateUser()">＋ Neuer Benutzer</button>`;
+  try {
+    const users = await API.get('/admin/users');
+    document.getElementById('page-content').innerHTML = `
+      <div class="card"><table class="table">
+        <thead><tr><th>Benutzer</th><th>Email</th><th>Rolle</th><th>Server</th><th>Status</th><th>Erstellt</th><th></th></tr></thead>
+        <tbody>${users.map(u => `<tr>
+          <td><div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent3));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;flex-shrink:0">${u.username[0].toUpperCase()}</div>${esc(u.username)}</div></td>
+          <td class="text-muted text-sm">${esc(u.email)}</td>
+          <td><span class="chip ${u.role==='admin'?'chip-admin':'chip-offline'}">${u.role}</span></td>
+          <td class="text-mono">${u.server_count||0}</td>
+          <td><span class="chip ${u.is_suspended?'chip-offline':'chip-online'}">${u.is_suspended?'Gesperrt':'Aktiv'}</span></td>
+          <td class="text-dim text-sm">${new Date(u.created_at).toLocaleDateString('de-DE')}</td>
+          <td><div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-sm" onclick="showEditUser('${u.id}','${esc(u.username)}','${esc(u.email)}','${u.role}',${u.is_suspended})">Edit</button>
+            ${u.id!==State.user.id?`<button class="btn btn-ghost btn-sm text-danger" onclick="confirmDeleteUser('${u.id}','${esc(u.username)}')">Löschen</button>`:''}
+          </div></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+  } catch (e) { document.getElementById('page-content').innerHTML = `<div class="empty"><p class="text-danger">${esc(e.message)}</p></div>`; }
+}
+function showCreateUser() {
+  showModal(`
+    <div class="modal-title"><span>＋ Neuer Benutzer</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label class="form-label">Username</label><input type="text" id="m-uname" class="form-input"/></div>
+    <div class="form-group"><label class="form-label">Email</label><input type="email" id="m-uemail" class="form-input"/></div>
+    <div class="form-group"><label class="form-label">Passwort</label><input type="password" id="m-upass" class="form-input"/></div>
+    <div class="form-group"><label class="form-label">Rolle</label><select id="m-urole" class="form-input"><option value="user">User</option><option value="admin">Admin</option></select></div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="submitCreateUser()">Erstellen</button></div>`);
+}
+async function submitCreateUser() {
+  try { await API.post('/admin/users', { username:document.getElementById('m-uname').value.trim(), email:document.getElementById('m-uemail').value.trim(), password:document.getElementById('m-upass').value, role:document.getElementById('m-urole').value }); toast('Benutzer erstellt!','success'); closeModal(); loadAdminUsers(); } catch (e) { mErr(e.message); }
+}
+function showEditUser(id, username, email, role, suspended) {
+  showModal(`
+    <div class="modal-title"><span>✏️ Benutzer bearbeiten</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label class="form-label">Username</label><input type="text" id="m-uname" class="form-input" value="${esc(username)}"/></div>
+    <div class="form-group"><label class="form-label">Email</label><input type="email" id="m-uemail" class="form-input" value="${esc(email)}"/></div>
+    <div class="form-group"><label class="form-label">Neues Passwort (leer = unverändert)</label><input type="password" id="m-upass" class="form-input"/></div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Rolle</label><select id="m-urole" class="form-input"><option value="user" ${role==='user'?'selected':''}>User</option><option value="admin" ${role==='admin'?'selected':''}>Admin</option></select></div>
+      <div class="form-group"><label class="form-label">Status</label><select id="m-ususp" class="form-input"><option value="0" ${!suspended?'selected':''}>Aktiv</option><option value="1" ${suspended?'selected':''}>Gesperrt</option></select></div>
+    </div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="submitEditUser('${id}')">Speichern</button></div>`);
+}
+async function submitEditUser(id) {
+  const body = { username:document.getElementById('m-uname').value.trim(), email:document.getElementById('m-uemail').value.trim(), role:document.getElementById('m-urole').value, is_suspended:parseInt(document.getElementById('m-ususp').value) };
+  const p = document.getElementById('m-upass').value; if(p) body.password=p;
+  try { await API.patch(`/admin/users/${id}`,body); toast('Gespeichert!','success'); closeModal(); loadAdminUsers(); } catch (e) { mErr(e.message); }
+}
+function confirmDeleteUser(id, name) {
+  showModal(`<div class="modal-title"><span style="color:var(--danger)">Benutzer löschen</span><button class="modal-close" onclick="closeModal()">✕</button></div><p><strong>${esc(name)}</strong> und alle Server löschen?</p><div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-danger" onclick="deleteUser('${id}')">Löschen</button></div>`);
+}
+async function deleteUser(id) {
+  try { await API.delete(`/admin/users/${id}`); toast('Gelöscht','success'); closeModal(); loadAdminUsers(); } catch (e) { toast(e.message,'error'); }
+}
+
+// ─── EGGS PAGE ────────────────────────────────────────────────────────────────
+async function loadAdminEggs() {
+  document.getElementById('page-actions').innerHTML = `<button class="btn btn-primary" onclick="showCreateEgg()">＋ Neues Egg</button>`;
+  const eggs = await API.get('/eggs').catch(() => []);
+  const categories = [...new Set(eggs.map(e => e.category))].sort();
+  const byCategory = cat => eggs.filter(e => e.category === cat);
+  const catLabels = { minecraft:'⛏️ Minecraft', gameserver:'🎮 Game Server', monitoring:'📊 Monitoring', webserver:'🌐 Web Server', generic:'🔧 Generic', other:'📦 Andere' };
+  document.getElementById('page-content').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:28px">
+      ${categories.map(cat => `
+        <div>
+          <div class="card-header" style="margin-bottom:14px">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text2)">${catLabels[cat] || cat}</h3>
+            <span class="text-dim text-sm">${byCategory(cat).length} Templates</span>
+          </div>
+          <div class="egg-grid">
+            ${byCategory(cat).map(egg => `
+              <div class="egg-card" onclick="showEggDetail('${egg.id}')">
+                <div class="egg-icon">${egg.icon}</div>
+                <div class="egg-name">${esc(egg.name)}</div>
+                <div class="egg-image">${esc(egg.docker_image)}</div>
+                <div class="egg-desc">${esc(egg.description||'')}</div>
+                <span class="egg-category">${egg.category}</span>
+                ${egg.is_builtin ? '<span class="chip chip-local" style="float:right;margin-top:8px">built-in</span>' : ''}
+              </div>`).join('')}
+          </div>
+        </div>`).join('')}
+      ${eggs.length === 0 ? '<div class="empty"><div class="empty-icon">🐣</div><h3>Keine Eggs</h3><p>Erstelle das erste Template</p></div>' : ''}
+    </div>`;
+}
+
+async function showEggDetail(id) {
+  const egg = await API.get(`/eggs/${id}`).catch(() => null);
+  if (!egg) return;
+  showModal(`
+    <div class="modal-title">
+      <span>${egg.icon} ${esc(egg.name)}</span>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="info-msg" style="margin-bottom:16px">
+      <strong>Docker Image:</strong> <span class="text-mono">${esc(egg.docker_image)}</span>
+    </div>
+    <p class="text-dim text-sm" style="margin-bottom:16px">${esc(egg.description||'')}</p>
+    ${egg.env_vars?.length ? `
+      <div class="form-group">
+        <label class="form-label">Umgebungsvariablen</label>
+        ${egg.env_vars.map(v => `
+          <div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+            <span class="text-mono text-accent text-sm" style="min-width:140px">${esc(v.key)}</span>
+            <span class="text-dim text-sm">=</span>
+            <span class="text-mono text-sm">${esc(v.default||'')}</span>
+            ${v.required?'<span class="chip" style="background:rgba(255,59,92,.1);color:var(--danger);font-size:10px">required</span>':''}
+          </div>`).join('')}
+      </div>` : ''}
+    <div class="modal-footer">
+      ${!egg.is_builtin ? `<button class="btn btn-danger btn-sm" onclick="deleteEgg('${egg.id}')">🗑 Löschen</button>` : ''}
+      <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
+      <button class="btn btn-primary" onclick="closeModal();showCreateServerFromEgg('${egg.id}')">＋ Server mit Egg erstellen</button>
+    </div>`, true);
+}
+
+function showCreateEgg() {
+  showModal(`
+    <div class="modal-title"><span>🐣 Neues Egg</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Name *</label><input type="text" id="egg-name" class="form-input" placeholder="Mein Server Template"/></div>
+      <div class="form-group"><label class="form-label">Icon</label><input type="text" id="egg-icon" class="form-input" value="🐣"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Docker Image *</label><input type="text" id="egg-image" class="form-input" placeholder="nginx:alpine"/></div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Kategorie</label>
+        <select id="egg-cat" class="form-input">
+          <option value="generic">Generic</option><option value="gameserver">Game Server</option>
+          <option value="minecraft">Minecraft</option><option value="webserver">Web Server</option>
+          <option value="monitoring">Monitoring</option><option value="other">Andere</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Stop-Command</label><input type="text" id="egg-stop" class="form-input" placeholder="stop" value=""/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Startup Command</label><input type="text" id="egg-startup" class="form-input" placeholder="node index.js"/></div>
+    <div class="form-group"><label class="form-label">Beschreibung</label><textarea id="egg-desc" class="form-input" rows="2" placeholder="Kurzbeschreibung..."></textarea></div>
+    <div class="form-group"><label class="form-label">ENV Variables (JSON Array)</label>
+      <textarea id="egg-envvars" class="form-input" style="font-family:var(--mono);font-size:12px" rows="4" placeholder='[{"key":"PORT","default":"3000","description":"HTTP Port","required":false}]'>[]</textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="doCreateEgg()">Egg erstellen</button>
+    </div>`, true);
+}
+
+async function doCreateEgg() {
+  try {
+    const body = {
+      name:            document.getElementById('egg-name').value,
+      icon:            document.getElementById('egg-icon').value || '🐣',
+      docker_image:    document.getElementById('egg-image').value,
+      category:        document.getElementById('egg-cat').value,
+      config_stop:     document.getElementById('egg-stop').value,
+      startup_command: document.getElementById('egg-startup').value,
+      description:     document.getElementById('egg-desc').value,
+      env_vars:        JSON.parse(document.getElementById('egg-envvars').value || '[]'),
+    };
+    if (!body.name || !body.docker_image) return toast('Name und Image erforderlich', 'error');
+    await API.post('/eggs', body);
+    toast('Egg erstellt!', 'success'); closeModal(); loadAdminEggs();
+  } catch (e) { toast('Fehler: '+e.message, 'error'); }
+}
+
+async function deleteEgg(id) {
+  if (!confirm('Egg wirklich löschen?')) return;
+  try { await API.delete(`/eggs/${id}`); toast('Egg gelöscht','success'); closeModal(); loadAdminEggs(); }
+  catch (e) { toast(e.message,'error'); }
+}
+
+async function showCreateServerFromEgg(eggId) {
+  const egg = await API.get(`/eggs/${eggId}`).catch(() => null);
+  if (!egg) return;
+  // Pre-fill create server modal with egg data
+  await showCreateServer(egg);
+}
+
+// ─── ALLOCATIONS PAGE ─────────────────────────────────────────────────────────
+async function loadAdminAllocations() {
+  document.getElementById('page-actions').innerHTML = `<button class="btn btn-primary" onclick="showAddAllocation()">＋ Ports hinzufügen</button>`;
+  const [allocs, nodes] = await Promise.all([
+    API.get('/allocations').catch(() => []),
+    API.get('/nodes').catch(() => []),
+  ]);
+  const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const grouped = {};
+  allocs.forEach(a => { if (!grouped[a.node_id]) grouped[a.node_id] = []; grouped[a.node_id].push(a); });
+
+  document.getElementById('page-content').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:20px">
+      ${Object.entries(grouped).map(([nid, ports]) => {
+        const node = nodeMap[nid] || { name: nid };
+        const free = ports.filter(p => !p.server_id).length;
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div><div class="card-title">🌐 ${esc(node.name)}</div><div class="text-dim text-sm">${esc(node.fqdn||'')}</div></div>
+              <div style="display:flex;gap:12px;align-items:center">
+                <span class="text-dim text-sm">${free} frei / ${ports.length} gesamt</span>
+                <button class="btn btn-ghost btn-xs" onclick="showAddAllocation('${nid}')">＋ Ports</button>
+              </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+              ${ports.slice(0,80).map(p => `
+                <div style="position:relative;display:inline-block">
+                  <span class="port-badge ${p.server_id?'used':'free'}" title="${p.server_id?'Belegt: '+esc(p.server_name||p.server_id):'Frei'}" onclick="!${!!p.server_id} && confirmDeleteAlloc('${p.id}',${p.port})">
+                    ${p.port}${p.alias?` (${esc(p.alias)})`:''}
+                  </span>
+                </div>`).join('')}
+              ${ports.length > 80 ? `<span class="text-dim text-sm" style="padding:4px 8px">... +${ports.length-80} weitere</span>` : ''}
+            </div>
+          </div>`;
+      }).join('')}
+      ${allocs.length === 0 ? '<div class="empty"><div class="empty-icon">🔌</div><h3>Keine Port-Allocations</h3><p>Füge Ports für deine Nodes hinzu</p></div>' : ''}
+    </div>`;
+}
+
+async function showAddAllocation(preNodeId) {
+  const nodes = await API.get('/nodes').catch(() => []);
+  showModal(`
+    <div class="modal-title"><span>🔌 Ports hinzufügen</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label class="form-label">Node</label>
+      <select id="alloc-node" class="form-input">
+        ${nodes.map(n => `<option value="${n.id}" ${n.id===preNodeId?'selected':''}>${esc(n.name)} (${esc(n.fqdn||'')})</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">IP-Adresse</label><input type="text" id="alloc-ip" class="form-input" value="0.0.0.0" placeholder="0.0.0.0"/></div>
+    <div class="grid grid-2">
+      <div class="form-group"><label class="form-label">Start Port</label><input type="number" id="alloc-start" class="form-input" placeholder="25565"/></div>
+      <div class="form-group"><label class="form-label">End Port (optional)</label><input type="number" id="alloc-end" class="form-input" placeholder="Leer = einzelner Port"/></div>
+    </div>
+    <div class="form-group"><label class="form-label">Alias (optional)</label><input type="text" id="alloc-alias" class="form-input" placeholder="minecraft-1"/></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="doAddAllocation()">Ports hinzufügen</button>
+    </div>`);
+}
+
+async function doAddAllocation() {
+  try {
+    const nodeId = document.getElementById('alloc-node').value;
+    const ip     = document.getElementById('alloc-ip').value || '0.0.0.0';
+    const start  = parseInt(document.getElementById('alloc-start').value);
+    const end    = parseInt(document.getElementById('alloc-end').value) || start;
+    const alias  = document.getElementById('alloc-alias').value;
+    if (!nodeId || !start) return toast('Node und Start-Port erforderlich', 'error');
+    if (start === end) {
+      await API.post('/allocations', { node_id: nodeId, ip, port: start, alias });
+    } else {
+      await API.post('/allocations/bulk', { node_id: nodeId, ip, start_port: start, end_port: end });
+    }
+    toast('Ports hinzugefügt!', 'success'); closeModal(); loadAdminAllocations();
+  } catch (e) { toast('Fehler: '+e.message,'error'); }
+}
+
+async function confirmDeleteAlloc(id, port) {
+  if (!confirm(`Port ${port} wirklich entfernen?`)) return;
+  try { await API.delete(`/allocations/${id}`); toast('Port entfernt','success'); loadAdminAllocations(); }
+  catch (e) { toast(e.message,'error'); }
+}
+
+// ─── AUDIT LOG ───────────────────────────────────────────────────────────────
+let _auditAll = [];
+async function loadAuditLog() {
+  document.getElementById('page-actions').innerHTML = `
+    <input id="audit-search" class="form-input" style="width:220px" placeholder="🔍 Suche..." oninput="auditFilter()"/>
+    <select id="audit-action-filter" class="form-input" style="width:160px" onchange="auditFilter()">
+      <option value="">Alle Aktionen</option>
+      ${['LOGIN','SERVER_CREATE','SERVER_DELETE','SERVER_START','SERVER_STOP','SERVER_CLONE','PORT_ASSIGN','TASK_CREATE','FILE_WRITE','USER_CREATE'].map(a=>`<option>${a}</option>`).join('')}
+    </select>`;
+  _auditAll = await API.get('/admin/audit-log').catch(() => []);
+  auditFilter();
+}
+
+function auditFilter() {
+  const q   = (document.getElementById('audit-search')?.value || '').toLowerCase();
+  const act = document.getElementById('audit-action-filter')?.value || '';
+  const filtered = _auditAll.filter(l =>
+    (!act || l.action === act) &&
+    (!q || l.action?.toLowerCase().includes(q) || l.username?.toLowerCase().includes(q) || l.ip?.includes(q))
+  );
+  const ac = {
+    LOGIN:'#00d4ff',SERVER_CREATE:'#00f5a0',SERVER_DELETE:'#ff4757',SERVER_START:'#00f5a0',
+    SERVER_STOP:'#f59e0b',SERVER_RESTART:'#f59e0b',SERVER_CLONE:'#a78bfa',
+    USER_CREATE:'#a78bfa',PORT_ASSIGN:'#60a5fa',TASK_CREATE:'#34d399',
+    FILE_WRITE:'#fbbf24',FILE_DELETE:'#ff4757',
+  };
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div style="margin-bottom:8px;font-size:12px;color:var(--text3)">${filtered.length} von ${_auditAll.length} Einträgen</div>
+      <table class="table">
+        <thead><tr><th>Zeit</th><th>Benutzer</th><th>Aktion</th><th>Details</th><th>IP</th></tr></thead>
+        <tbody>${filtered.map(l => {
+          let details = '';
+          try { const d = JSON.parse(l.details||'{}'); details = Object.entries(d).map(([k,v])=>`<span class="text-dim">${k}:</span> ${esc(String(v)).substring(0,30)}`).join(' '); } catch {}
+          return `<tr>
+            <td class="text-mono text-sm text-dim" style="white-space:nowrap">${new Date(l.created_at).toLocaleString('de-DE')}</td>
+            <td><span style="font-weight:500">${esc(l.username||'system')}</span></td>
+            <td><span class="audit-badge" style="background:${ac[l.action]||'#64748b'}22;color:${ac[l.action]||'#94a3b8'};border-color:${ac[l.action]||'#334155'}">${l.action}</span></td>
+            <td class="text-sm" style="max-width:260px;overflow:hidden">${details || (l.target_type ? `${l.target_type}:${(l.target_id||'').substring(0,8)}` : '—')}</td>
+            <td class="text-mono text-sm text-dim">${l.ip||'-'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+// ─── DOCKER IMAGES ───────────────────────────────────────────────────────────
+async function loadDockerImages() {
+  document.getElementById('page-actions').innerHTML = `<button class="btn btn-primary" onclick="showPullImage()">⬇️ Image ziehen</button>`;
+  const images = await API.get('/admin/docker/images').catch(e => { document.getElementById('page-content').innerHTML=`<div class="empty"><p class="text-danger">${esc(e.message)}</p></div>`; return null; });
+  if (!images) return;
+  document.getElementById('page-content').innerHTML = `
+    <div class="card"><table class="table">
+      <thead><tr><th>Image</th><th>Größe</th><th>ID</th></tr></thead>
+      <tbody>${images.map(img => `<tr><td class="text-mono text-accent">${esc((img.RepoTags||img.tags||['<none>']).join(', '))}</td><td class="text-mono">${fmtBytes(img.Size||img.size||0)}</td><td class="text-mono text-dim text-sm">${esc((img.Id||img.id||'').substring(7,19))}</td></tr>`).join('')}</tbody>
+    </table></div>`;
+}
+function showPullImage() {
+  showModal(`
+    <div class="modal-title"><span>⬇️ Docker Image ziehen</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label class="form-label">Image Name</label><input type="text" id="m-imgname" class="form-input" placeholder="nginx:latest"/></div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div id="m-success" class="success-msg hidden"></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="doPullImage()">Pull</button></div>`);
+}
+async function doPullImage() {
+  const img = document.getElementById('m-imgname').value.trim(); if (!img) return;
+  document.getElementById('m-success').textContent='⏳ Ziehe '+img+'...'; document.getElementById('m-success').classList.remove('hidden');
+  document.getElementById('m-error').classList.add('hidden');
+  try { await API.post('/admin/docker/images/pull', { image: img }); document.getElementById('m-success').textContent='✅ '+img+' gepullt!'; setTimeout(()=>{closeModal();loadDockerImages();},2000); }
+  catch (e) { document.getElementById('m-success').classList.add('hidden'); document.getElementById('m-error').textContent=e.message; document.getElementById('m-error').classList.remove('hidden'); }
+}
+
+// ─── API KEYS ────────────────────────────────────────────────────────────────
+async function loadApiKeys() {
+  document.getElementById('page-actions').innerHTML = `<button class="btn btn-primary" onclick="showCreateApiKey()">＋ Neuer API Key</button>`;
+  const keys = await API.get('/account/api-keys').catch(() => []);
+  document.getElementById('page-content').innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:8px">API verwenden</div>
+      <p class="text-muted text-sm">Header: <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-family:var(--mono);color:var(--accent)">Authorization: Bearer hpk_...</code></p>
+      <p class="text-muted text-sm" style="margin-top:4px">Basis-URL: <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-family:var(--mono);color:var(--accent)">${location.origin}/api</code></p>
+    </div>
+    <div class="card">
+      ${keys.length===0 ? '<div class="empty" style="padding:24px"><p>Noch keine API Keys</p></div>' : `
+      <table class="table"><thead><tr><th>Name</th><th>Prefix</th><th>Zuletzt benutzt</th><th>Erstellt</th><th></th></tr></thead>
+      <tbody>${keys.map(k=>`<tr><td><strong>${esc(k.name)}</strong></td><td class="text-mono text-accent">${esc(k.key_prefix)}…</td><td class="text-dim text-sm">${k.last_used_at?new Date(k.last_used_at).toLocaleString('de-DE'):'Nie'}</td><td class="text-dim text-sm">${new Date(k.created_at).toLocaleDateString('de-DE')}</td><td><button class="btn btn-ghost btn-sm text-danger" onclick="deleteApiKey('${k.id}','${esc(k.name)}')">Widerrufen</button></td></tr>`).join('')}</tbody></table>`}
+    </div>`;
+}
+function showCreateApiKey() {
+  showModal(`
+    <div class="modal-title"><span>🔑 Neuer API Key</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label class="form-label">Name</label><input type="text" id="m-kname" class="form-input" placeholder="Meine Anwendung"/></div>
+    <div id="m-new-key" class="success-msg hidden"></div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="submitCreateApiKey()">Generieren</button></div>`);
+}
+async function submitCreateApiKey() {
+  const name = document.getElementById('m-kname').value.trim(); if (!name) return;
+  try {
+    const d = await API.post('/account/api-keys', { name });
+    document.getElementById('m-new-key').innerHTML = `<strong>Key erstellt! Sofort kopieren:</strong><div class="code-box" style="margin-top:8px">${esc(d.key)}</div>`;
+    document.getElementById('m-new-key').classList.remove('hidden');
+    document.querySelector('.modal-footer .btn-primary').textContent = 'Fertig';
+    document.querySelector('.modal-footer .btn-primary').onclick = () => { closeModal(); loadApiKeys(); };
+  } catch (e) { document.getElementById('m-error').textContent=e.message; document.getElementById('m-error').classList.remove('hidden'); }
+}
+async function deleteApiKey(id, name) {
+  if (!confirm(`API Key "${name}" widerrufen?`)) return;
+  try { await API.delete(`/account/api-keys/${id}`); toast('Key widerrufen','success'); loadApiKeys(); } catch (e) { toast(e.message,'error'); }
+}
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+function loadSettings() {
+  const u = State.user;
+  document.getElementById('page-content').innerHTML = `
+    <div class="grid grid-2" style="max-width:800px">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:16px">👤 Profil</div>
+        <table class="table">
+          <tr><td class="text-dim">Username</td><td>${esc(u.username)}</td></tr>
+          <tr><td class="text-dim">Email</td><td>${esc(u.email)}</td></tr>
+          <tr><td class="text-dim">Rolle</td><td><span class="chip ${u.role==='admin'?'chip-admin':'chip-offline'}">${u.role}</span></td></tr>
+          <tr><td class="text-dim">User ID</td><td class="text-mono text-sm text-dim">${esc(u.id)}</td></tr>
+          <tr><td class="text-dim">Dabei seit</td><td class="text-sm">${new Date(u.created_at).toLocaleString('de-DE')}</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:16px">🔒 Passwort ändern</div>
+        <div class="form-group"><label class="form-label">Aktuelles Passwort</label><input type="password" id="s-cur-pass" class="form-input"/></div>
+        <div class="form-group"><label class="form-label">Neues Passwort</label><input type="password" id="s-new-pass" class="form-input"/></div>
+        <div id="s-error" class="error-msg hidden"></div>
+        <div id="s-success" class="success-msg hidden"></div>
+        <button class="btn btn-primary" onclick="changePassword()">Aktualisieren</button>
+      </div>
+      <div class="card" style="grid-column:span 2">
+        <div class="card-title" style="margin-bottom:16px">🚪 Abmelden</div>
+        <p class="text-muted text-sm" style="margin-bottom:12px">Von HostPanel auf diesem Gerät abmelden.</p>
+        <button class="btn btn-danger" onclick="logout()">Abmelden</button>
+      </div>
+    </div>`;
+}
+async function changePassword() {
+  const errEl = document.getElementById('s-error'), sucEl = document.getElementById('s-success');
+  errEl.classList.add('hidden'); sucEl.classList.add('hidden');
+  try {
+    await API.post('/auth/change-password', { current_password: document.getElementById('s-cur-pass').value, new_password: document.getElementById('s-new-pass').value });
+    sucEl.textContent = '✅ Passwort erfolgreich geändert!'; sucEl.classList.remove('hidden');
+  } catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function fmtBytes(b) {
+  if (!b || b===0) return '0 B';
+  const k=1024, s=['B','KB','MB','GB','TB'], i=Math.floor(Math.log(b)/Math.log(k));
+  return (b/k**i).toFixed(1)+' '+s[i];
+}
+function esc(s) {
+  if (s==null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+}
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  const icons = {success:'✅',error:'❌',info:'ℹ️',warn:'⚠️'};
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type]||'•'}</span><span>${esc(msg)}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => { el.style.animation='slideOut .25s forwards'; setTimeout(()=>el.remove(),250); }, 3500);
+}
+function showModal(html, large=false) {
+  document.getElementById('modal-container').innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal${large?' modal-lg':''}">${html}</div></div>`;
+}
+function closeModal() { document.getElementById('modal-container').innerHTML = ''; }
+function mErr(m) { const el=document.getElementById('m-error'); if(el){el.textContent=m;el.classList.remove('hidden');}else toast(m,'error'); }
+// Helper für Text-Klassen inline
+function text_danger(el) { el.style.color='var(--danger)'; }
+
+// ─── KEYBOARD SHORTCUTS ──────────────────────────────────────────────────────
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
+document.getElementById('reg-pass').addEventListener('keydown', e => { if (e.key==='Enter') doRegister(); });
+
+// ─── BOOTSTRAP ───────────────────────────────────────────────────────────────
+if (State.token) initApp();
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── MOD / PLUGIN MANAGER ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ModState = {
+  platform: null,       // { game, loader, has_curseforge }
+  activeTab: 'modrinth',// modrinth | curseforge | workshop | github | generic
+  searchQuery: '',
+  results: [],
+  installed: [],
+  loading: false,
+};
+
+const PLATFORM_ICONS = {
+  minecraft: '⛏️', source: '🔫', valheim: '⚔️', generic: '📦',
+};
+const LOADER_LABELS = {
+  paper:'Paper', spigot:'Spigot', fabric:'Fabric', forge:'Forge',
+  quilt:'Quilt', neoforge:'NeoForge', bungeecord:'BungeeCord', velocity:'Velocity',
+};
+
+async function modsInit(serverId) {
+  const root = document.getElementById('mods-root');
+  if (!root) return;
+  root.innerHTML = '<div class="empty"><div class="spin">🧩</div></div>';
+  try {
+    ModState.platform = await API.get(`/servers/${serverId}/mods/platform`);
+  } catch (e) {
+    root.innerHTML = `<div class="empty"><p class="text-danger">Fehler: ${esc(e.message)}</p></div>`;
+    return;
+  }
+  if (!ModState.platform.container_ready) {
+    root.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div><p>Container ist noch nicht bereit (wird installiert)</p></div>';
+    return;
+  }
+  modsRender(serverId);
+  modsLoadInstalled(serverId);
+}
+
+function modsRender(serverId) {
+  const root = document.getElementById('mods-root');
+  if (!root) return;
+  const p = ModState.platform;
+  const game = p?.game || 'generic';
+  const loader = p?.loader || '';
+  const pbClass = `pb-${game}`;
+  const isMinecraft = game === 'minecraft';
+  const isSource    = game === 'source';
+  const isValheim   = game === 'valheim';
+
+  // Determine which tabs to show
+  const tabs = [];
+  if (isMinecraft) { tabs.push({ id:'modrinth', label:'🟢 Modrinth' }); }
+  if (isMinecraft && p?.has_curseforge) { tabs.push({ id:'curseforge', label:'🔶 CurseForge' }); }
+  if (isSource || isValheim) { tabs.push({ id:'workshop', label:'🔵 Steam Workshop' }); }
+  tabs.push({ id:'github',  label:'🐙 GitHub' });
+  tabs.push({ id:'generic', label:'🔗 Direkte URL' });
+
+  if (!tabs.find(t => t.id === ModState.activeTab)) ModState.activeTab = tabs[0]?.id || 'generic';
+
+  root.innerHTML = `
+    <div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <span class="platform-badge ${pbClass}">
+          ${PLATFORM_ICONS[game]||'📦'} ${game.charAt(0).toUpperCase()+game.slice(1)}
+          ${loader ? ` · ${LOADER_LABELS[loader]||loader}` : ''}
+        </span>
+        ${!p?.has_curseforge && isMinecraft ? '<span class="text-dim text-xs">CurseForge: CURSEFORGE_API_KEY nicht gesetzt</span>' : ''}
+      </div>
+
+      <div class="mods-layout">
+        <!-- LEFT: Search + Results -->
+        <div>
+          <div class="mod-tabs">
+            ${tabs.map(t => `<button class="mod-tab ${ModState.activeTab===t.id?'active':''}" onclick="modsSwitchTab('${t.id}','${serverId}')">${t.label}</button>`).join('')}
+          </div>
+          <div id="mods-search-area">
+            ${modsRenderSearchArea(serverId)}
+          </div>
+        </div>
+
+        <!-- RIGHT: Installed Mods -->
+        <div>
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">📦 Installierte Mods</div>
+              <button class="btn btn-ghost btn-xs" onclick="modsLoadInstalled('${serverId}')">↺</button>
+            </div>
+            <div id="mods-installed-list"><div class="text-dim text-sm" style="padding:8px">Lädt...</div></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function modsRenderSearchArea(serverId) {
+  const tab = ModState.activeTab;
+  if (tab === 'modrinth' || tab === 'curseforge') {
+    return `
+      <div class="mod-search-bar">
+        <input type="text" class="form-input" id="mod-search-input"
+          placeholder="Mod/Plugin suchen..." value="${esc(ModState.searchQuery)}"
+          onkeydown="if(event.key==='Enter') modsSearch('${serverId}')"/>
+        <button class="btn btn-primary btn-sm" onclick="modsSearch('${serverId}')">Suchen</button>
+      </div>
+      <div id="mod-results">${ModState.results.length ? modsRenderResults(serverId) : '<div class="empty" style="padding:24px"><p class="text-dim">Suche starten...</p></div>'}</div>`;
+  }
+  if (tab === 'workshop') {
+    return `
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:12px">Steam Workshop installieren</div>
+        <div class="form-group"><label class="form-label">Workshop Item ID</label>
+          <input type="text" id="ws-id-input" class="form-input" placeholder="z.B. 2123456789"/>
+        </div>
+        <div class="form-group"><label class="form-label">AppID</label>
+          <input type="text" id="ws-appid-input" class="form-input" value="730" placeholder="730 = CS2, 4000 = Garry's Mod"/>
+        </div>
+        <div class="modal-footer" style="margin:0;padding:0;border:none;justify-content:flex-start;margin-top:8px">
+          <a href="https://steamcommunity.com/workshop/" target="_blank" class="btn btn-ghost btn-sm">🔍 Workshop öffnen</a>
+          <button class="btn btn-primary btn-sm" onclick="modsInstallWorkshop('${serverId}')">⬇ Installieren</button>
+        </div>
+        <div id="mod-install-log" class="install-progress hidden"></div>
+      </div>`;
+  }
+  if (tab === 'github') {
+    return `
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:12px">GitHub Release herunterladen</div>
+        <div class="form-group"><label class="form-label">Repository (owner/repo)</label>
+          <input type="text" id="gh-repo-input" class="form-input" placeholder="EssentialsX/Essentials"/>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="modsLoadGithubReleases('${serverId}')">📦 Releases laden</button>
+        <div id="mod-results" style="margin-top:12px"></div>
+      </div>`;
+  }
+  if (tab === 'generic') {
+    return `
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">Direkte URL / beliebige Datei</div>
+        <div class="form-group"><label class="form-label">Download-URL</label>
+          <input type="text" id="generic-url-input" class="form-input" placeholder="https://example.com/myplugin-1.0.jar"/>
+        </div>
+        <div class="grid grid-2">
+          <div class="form-group"><label class="form-label">Dateiname (optional)</label>
+            <input type="text" id="generic-name-input" class="form-input" placeholder="myplugin.jar"/>
+          </div>
+          <div class="form-group"><label class="form-label">Zielordner im Container</label>
+            <input type="text" id="generic-dest-input" class="form-input" placeholder="/home/container/plugins"/>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="modsInstallGeneric('${serverId}')">⬇ Herunterladen & installieren</button>
+        <div id="mod-install-log" class="install-progress hidden"></div>
+      </div>`;
+  }
+  return '';
+}
+
+function modsRenderResults(serverId) {
+  if (!ModState.results.length)
+    return '<div class="empty" style="padding:24px"><p class="text-dim">Keine Ergebnisse</p></div>';
+  return ModState.results.map(m => {
+    const srcCls = `msb-${m.source||'modrinth'}`;
+    const dlFmt  = m.downloads > 1e6 ? (m.downloads/1e6).toFixed(1)+'M' : m.downloads > 1e3 ? (m.downloads/1e3).toFixed(0)+'K' : m.downloads;
+    return `
+      <div class="mod-card" onclick="modsShowVersions('${serverId}','${m.id}','${esc(m.title)}','${m.source||ModState.activeTab}')">
+        ${m.icon
+          ? `<img class="mod-icon" src="${esc(m.icon)}" onerror="this.style.display='none'" loading="lazy"/>`
+          : `<div class="mod-icon-placeholder">🧩</div>`}
+        <div class="mod-info">
+          <div class="mod-name">${esc(m.title)}</div>
+          <div class="mod-desc">${esc(m.description||'')}</div>
+          <div class="mod-meta">
+            ${dlFmt ? `<span class="mod-dl">⬇ ${dlFmt}</span>` : ''}
+            <span class="mod-source-badge ${srcCls}">${m.source||ModState.activeTab}</span>
+            ${(m.categories||[]).slice(0,2).map(c=>`<span class="vtag">${esc(c)}</span>`).join('')}
+            ${m.author ? `<span class="text-dim text-xs">by ${esc(m.author)}</span>` : ''}
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-xs" style="align-self:center;flex-shrink:0">Versionen →</button>
+      </div>`;
+  }).join('');
+}
+
+function modsSwitchTab(tab, serverId) {
+  ModState.activeTab  = tab;
+  ModState.results    = [];
+  ModState.searchQuery = '';
+  const area = document.getElementById('mods-search-area');
+  if (area) area.innerHTML = modsRenderSearchArea(serverId);
+  // also update tab buttons
+  document.querySelectorAll('.mod-tab').forEach(b => b.classList.toggle('active', b.textContent.includes(
+    {modrinth:'Modrinth', curseforge:'CurseForge', workshop:'Workshop', github:'GitHub', generic:'URL'}[tab]||tab
+  )));
+}
+
+async function modsSearch(serverId) {
+  const input = document.getElementById('mod-search-input');
+  const q = input?.value.trim() || '';
+  ModState.searchQuery = q;
+  const tab = ModState.activeTab;
+  const resultsEl = document.getElementById('mod-results');
+  if (resultsEl) resultsEl.innerHTML = '<div class="empty" style="padding:16px"><div class="spin">🧩</div></div>';
+  try {
+    let data;
+    if (tab === 'modrinth') {
+      data = await API.get(`/servers/${serverId}/mods/modrinth/search?q=${encodeURIComponent(q)}`);
+      ModState.results = data.hits || [];
+    } else if (tab === 'curseforge') {
+      data = await API.get(`/servers/${serverId}/mods/curseforge/search?q=${encodeURIComponent(q)}`);
+      ModState.results = data.hits || [];
+    }
+    if (resultsEl) resultsEl.innerHTML = modsRenderResults(serverId);
+  } catch (e) {
+    if (resultsEl) resultsEl.innerHTML = `<div class="empty" style="padding:16px"><p class="text-danger">Fehler: ${esc(e.message)}</p></div>`;
+  }
+}
+
+async function modsShowVersions(serverId, projectId, name, source) {
+  showModal(`
+    <div class="modal-title"><span>📦 ${esc(name)}</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="text-dim text-sm" style="margin-bottom:12px">Versionen laden...</div>
+    <div id="version-list-content"><div class="empty"><div class="spin">⏳</div></div></div>
+  `, true);
+
+  try {
+    let versions = [];
+    if (source === 'modrinth') {
+      versions = await API.get(`/servers/${serverId}/mods/modrinth/project/${projectId}/versions`);
+    } else if (source === 'curseforge') {
+      versions = await API.get(`/servers/${serverId}/mods/curseforge/mod/${projectId}/files`);
+    }
+    const el = document.getElementById('version-list-content');
+    if (!el) return;
+    if (!versions.length) { el.innerHTML = '<div class="empty"><p>Keine Versionen gefunden</p></div>'; return; }
+    el.innerHTML = `<div class="version-list">` + versions.map(v => {
+      const files = v.files || [];
+      const primaryFile = files.find(f=>f.primary) || files[0] || { url: v.url, filename: v.filename||v.name };
+      const mcVers = (v.game_versions||[]).slice(0,3).map(gv=>`<span class="vtag mc">${esc(gv)}</span>`).join('');
+      const loaders = (v.loaders||[]).map(l=>`<span class="vtag loader">${esc(l)}</span>`).join('');
+      return `
+        <div class="version-row" onclick="modsInstallFile('${serverId}','${esc(primaryFile.url||'')}','${esc(primaryFile.filename||primaryFile.name||'')}','${source}','${esc(name)}')">
+          <div class="version-name">${esc(v.name||v.version||v.tag||'Unbekannt')}</div>
+          <div class="version-tags">${mcVers}${loaders}</div>
+          <span class="btn btn-ghost btn-xs">⬇ Installieren</span>
+        </div>`;
+    }).join('') + '</div>';
+  } catch (e) {
+    const el = document.getElementById('version-list-content');
+    if (el) el.innerHTML = `<div class="empty"><p class="text-danger">${esc(e.message)}</p></div>`;
+  }
+}
+
+async function modsInstallFile(serverId, url, filename, source, modName) {
+  if (!url) { toast('Keine Download-URL verfügbar', 'error'); return; }
+  closeModal();
+  toast(`⬇ ${modName} wird installiert...`, 'info');
+  try {
+    const result = await API.post(`/servers/${serverId}/mods/install`, {
+      url, filename, source, mod_name: modName,
+    });
+    if (result.success) {
+      toast(`✅ ${filename} installiert (${fmtBytes(result.file_size)})`, 'success');
+      modsLoadInstalled(serverId);
+    } else {
+      toast('Installation fehlgeschlagen: ' + (result.output||'').slice(-100), 'error');
+    }
+  } catch (e) { toast('Fehler: '+e.message, 'error'); }
+}
+
+async function modsInstallWorkshop(serverId) {
+  const wsId   = document.getElementById('ws-id-input')?.value.trim();
+  const appId  = document.getElementById('ws-appid-input')?.value.trim() || '730';
+  const logEl  = document.getElementById('mod-install-log');
+  if (!wsId) { toast('Workshop-ID erforderlich', 'error'); return; }
+  if (logEl) { logEl.classList.remove('hidden'); logEl.textContent = '⏳ Starte steamcmd Download...\n'; }
+  try {
+    const result = await API.post(`/servers/${serverId}/mods/install`, {
+      source: 'workshop', workshop_id: wsId, appid: appId,
+    });
+    if (logEl) logEl.textContent += result.output || '';
+    if (result.success) { toast('✅ Workshop-Item installiert!', 'success'); modsLoadInstalled(serverId); }
+    else { toast('Installation fehlgeschlagen', 'error'); }
+  } catch (e) {
+    if (logEl) logEl.textContent += 'Fehler: ' + e.message;
+    toast('Fehler: '+e.message, 'error');
+  }
+}
+
+async function modsInstallGeneric(serverId) {
+  const url      = document.getElementById('generic-url-input')?.value.trim();
+  const filename = document.getElementById('generic-name-input')?.value.trim() || '';
+  const dest     = document.getElementById('generic-dest-input')?.value.trim() || '';
+  const logEl    = document.getElementById('mod-install-log');
+  if (!url) { toast('URL erforderlich', 'error'); return; }
+  if (logEl) { logEl.classList.remove('hidden'); logEl.textContent = `⏳ Lade herunter: ${url}\n`; }
+  try {
+    const result = await API.post(`/servers/${serverId}/mods/install`, {
+      url, filename: filename || undefined, dest_dir: dest || undefined, source: 'generic',
+    });
+    if (logEl) logEl.textContent += (result.output || '') + (result.success ? '\n✅ Fertig!' : '\n❌ Fehler');
+    if (result.success) {
+      toast(`✅ ${result.filename} installiert (${fmtBytes(result.file_size)})`, 'success');
+      modsLoadInstalled(serverId);
+    } else { toast('Download fehlgeschlagen', 'error'); }
+  } catch (e) {
+    if (logEl) logEl.textContent += 'Fehler: ' + e.message;
+    toast('Fehler: '+e.message, 'error');
+  }
+}
+
+async function modsLoadGithubReleases(serverId) {
+  const repo  = document.getElementById('gh-repo-input')?.value.trim();
+  const resEl = document.getElementById('mod-results');
+  if (!repo) { toast('Repository erforderlich (owner/repo)', 'error'); return; }
+  if (resEl) resEl.innerHTML = '<div class="empty" style="padding:12px"><div class="spin">⏳</div></div>';
+  try {
+    const releases = await API.get(`/servers/${serverId}/mods/github/releases?repo=${encodeURIComponent(repo)}`);
+    if (!releases.length) { if(resEl) resEl.innerHTML='<div class="empty" style="padding:12px"><p class="text-dim">Keine Releases</p></div>'; return; }
+    if (resEl) resEl.innerHTML = releases.map(r => {
+      const assets = r.assets || [];
+      return `
+        <div class="card" style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:600">${esc(r.name||r.tag)}</span>
+            <span class="vtag">${esc(r.tag)}</span>
+            ${r.prerelease?'<span class="vtag" style="color:var(--warn)">pre-release</span>':''}
+          </div>
+          ${r.body?`<p class="text-dim text-xs" style="margin-bottom:8px;line-height:1.5">${esc(r.body)}</p>`:''}
+          <div style="display:flex;flex-direction:column;gap:5px">
+            ${assets.length ? assets.map(a=>`
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="text-mono text-sm flex-1">${esc(a.name)}</span>
+                <span class="text-dim text-xs">${fmtBytes(a.size)}</span>
+                <button class="btn btn-ghost btn-xs" onclick="modsInstallFile('${serverId}','${esc(a.url)}','${esc(a.name)}','github','${esc(a.name)}')">⬇ Install</button>
+              </div>`).join('')
+              : '<span class="text-dim text-xs">Keine Assets in diesem Release</span>'}
+          </div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    if(resEl) resEl.innerHTML = `<div class="empty"><p class="text-danger">${esc(e.message)}</p></div>`;
+  }
+}
+
+async function modsLoadInstalled(serverId) {
+  const el = document.getElementById('mods-installed-list');
+  if (!el) return;
+  try {
+    const mods = await API.get(`/servers/${serverId}/mods/installed`);
+    ModState.installed = mods;
+    if (!mods.length) {
+      el.innerHTML = '<div class="text-dim text-sm" style="padding:12px;text-align:center">Keine Mods gefunden</div>';
+      return;
+    }
+    el.innerHTML = mods.map(m => `
+      <div class="installed-mod-row">
+        <span class="mod-ext-badge">${esc(m.ext)}</span>
+        <div style="flex:1;min-width:0">
+          <div class="text-sm" style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name)}</div>
+          <div class="text-xs text-dim">${fmtBytes(m.size)} · ${esc(m.date)}</div>
+        </div>
+        <button class="btn btn-ghost btn-xs text-danger" title="Entfernen"
+          onclick="modsDelete('${serverId}','${esc(m.dir+'/'+m.name)}','${esc(m.name)}')">🗑</button>
+      </div>`).join('');
+  } catch {
+    el.innerHTML = '<div class="text-dim text-sm" style="padding:12px">Fehler beim Laden</div>';
+  }
+}
+
+async function modsDelete(serverId, path, name) {
+  if (!confirm(`"${name}" wirklich entfernen?`)) return;
+  try {
+    await API.delete(`/servers/${serverId}/mods/installed`, { path });
+    toast(`${name} entfernt`, 'success');
+    modsLoadInstalled(serverId);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+
+// ─── NETZWERK / PORTS ────────────────────────────────────────────────────────
+async function networkInit(serverId) {
+  const root = document.getElementById('network-root');
+  if (!root) return;
+  root.innerHTML = '<div class="empty"><div class="spin">🌐</div></div>';
+  try {
+    const [ports, allocs] = await Promise.all([
+      API.get(`/servers/${serverId}/ports`),
+      API.get(`/allocations`).catch(() => [])
+    ]);
+    const srv = State.server || {};
+    const nodeId = srv.node_id;
+
+    // Fallback: wenn keine Allocations vorhanden, Server-Ports aus JSON anzeigen
+    let effectivePorts = ports;
+    if (ports.length === 0 && Array.isArray(srv.ports) && srv.ports.length > 0) {
+      // Ports aus server.ports synthetisch anzeigen (noch nicht in port_allocations)
+      effectivePorts = srv.ports.map((p, i) => ({
+        id: null,
+        ip: '0.0.0.0',
+        port: p.host || p,
+        is_primary: i === 0 ? 1 : 0,
+        notes: '',
+        _synthetic: true,
+      }));
+    }
+
+    // Free allocations for this node (not yet assigned)
+    const freeAllocs = allocs.filter(a => !a.server_id && a.node_id === nodeId);
+
+    root.innerHTML = networkRender(effectivePorts, freeAllocs, serverId);
+  } catch(e) {
+    root.innerHTML = `<div class="empty"><p>Fehler: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function networkRender(ports, freeAllocs, serverId) {
+  const primaryPort = ports.find(p => p.is_primary);
+  const secondaryPorts = ports.filter(p => !p.is_primary);
+
+  const portRows = ports.map(p => `
+    <div class="network-port-row ${p.is_primary ? 'is-primary' : ''}">
+      <div class="network-port-left">
+        <span class="network-icon">🖧</span>
+        <div>
+          <div class="network-badges">
+            <span class="badge-ip">${esc(p.ip === '0.0.0.0' ? (State.server?.node_fqdn || p.ip) : p.ip)}</span>
+            <span class="badge-port">${p.port}</span>
+          </div>
+          <div class="network-labels"><span>IP ADDRESS</span><span>PORT</span></div>
+        </div>
+      </div>
+      <div class="network-notes">
+        <input type="text" class="form-input network-notes-input" value="${esc(p.notes||'')}"
+          placeholder="Notizen..."
+          onblur="networkSaveNotes('${serverId}','${p.id}',this.value)"/>
+      </div>
+      <div class="network-actions">
+        ${p._synthetic
+          ? '<span class="text-dim text-sm">Wird beim Neustart registriert</span>'
+          : p.is_primary
+            ? '<span class="btn btn-primary btn-sm" style="cursor:default">Primary</span>'
+            : `<button class="btn btn-danger btn-sm" onclick="networkRemovePort('${serverId}','${p.id}')" title="Port entfernen">🗑</button>
+               <button class="btn btn-secondary btn-sm" onclick="networkSetPrimary('${serverId}','${p.id}')">Make Primary</button>`
+        }
+      </div>
+    </div>`).join('');
+
+  const freeSection = freeAllocs.length ? `
+    <div class="card" style="margin-top:16px">
+      <div class="card-title" style="margin-bottom:12px">➕ Port hinzufügen</div>
+      <div class="network-add-ports">
+        ${freeAllocs.map(a => `
+          <button class="badge-alloc" onclick="networkAddPort('${serverId}','${a.id}')">
+            ${esc(a.ip === '0.0.0.0' ? (State.server?.node_fqdn || a.ip) : a.ip)}:<strong>${a.port}</strong>
+          </button>`).join('')}
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="card">
+      <div class="card-title" style="margin-bottom:16px">🌐 Port-Zuweisung</div>
+      ${ports.length ? portRows : '<div class="empty" style="padding:20px"><p>Noch keine Ports zugewiesen</p></div>'}
+    </div>
+    ${freeSection}`;
+}
+
+async function networkSetPrimary(serverId, allocId) {
+  try {
+    await API.put(`/servers/${serverId}/ports/${allocId}/primary`, {});
+    networkInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function networkRemovePort(serverId, allocId) {
+  try {
+    await API.delete(`/servers/${serverId}/ports/${allocId}`);
+    toast('Port entfernt', 'success');
+    networkInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function networkAddPort(serverId, allocId) {
+  try {
+    await API.post(`/servers/${serverId}/ports`, { alloc_id: allocId });
+    toast('Port hinzugefügt', 'success');
+    networkInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function networkSaveNotes(serverId, allocId, notes) {
+  try {
+    await API.put(`/servers/${serverId}/ports/${allocId}/notes`, { notes });
+  } catch(e) { /* still */ }
+}
+
+
+// ─── SCHEDULED TASKS ─────────────────────────────────────────────────────────
+async function scheduleInit(serverId) {
+  const root = document.getElementById('schedule-root');
+  if (!root) return;
+  root.innerHTML = '<div class="empty"><div class="spin">⏰</div></div>';
+  try {
+    const tasks = await API.get(`/servers/${serverId}/schedule`);
+    root.innerHTML = `
+      <div class="card">
+        <div class="card-title" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+          <span>⏰ Geplante Aufgaben</span>
+          <button class="btn btn-primary btn-sm" onclick="showCreateTask('${serverId}')">＋ Task erstellen</button>
+        </div>
+        ${tasks.length === 0
+          ? '<div class="empty" style="padding:24px"><p>Noch keine Tasks erstellt</p></div>'
+          : `<table class="table">
+              <thead><tr><th>Name</th><th>Aktion</th><th>Cron</th><th>Zuletzt</th><th>Status</th><th></th></tr></thead>
+              <tbody>${tasks.map(t => `<tr>
+                <td><span style="font-weight:600">${esc(t.name)}</span>${t.payload?`<div class="text-mono text-sm text-dim" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${esc(t.payload)}</div>`:''}</td>
+                <td><span class="badge-action ${t.action}">${t.action}</span></td>
+                <td class="text-mono text-sm">${esc(t.cron)}<div class="text-dim text-sm">${cronHuman(t.cron)}</div></td>
+                <td class="text-sm text-dim">${t.last_run ? new Date(t.last_run).toLocaleString('de-DE') : '—'}</td>
+                <td>${t.enabled ? '<span style="color:var(--success)">●</span>' : '<span style="color:var(--text3)">●</span>'}</td>
+                <td style="display:flex;gap:6px">
+                  <button class="btn btn-ghost btn-xs" onclick="taskRun('${serverId}','${t.id}')" title="Jetzt ausführen">▶</button>
+                  <button class="btn btn-ghost btn-xs" onclick="taskToggle('${serverId}','${t.id}',${t.enabled?0:1})" title="${t.enabled?'Deaktivieren':'Aktivieren'}">${t.enabled?'⏸':'▶'}</button>
+                  <button class="btn btn-ghost btn-xs text-danger" onclick="taskDelete('${serverId}','${t.id}')">🗑</button>
+                </td>
+              </tr>`).join('')}</tbody>
+            </table>`}
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="card-title" style="margin-bottom:8px">📖 Cron-Format</div>
+        <div class="text-mono text-sm" style="color:var(--text2);line-height:2">
+          ┌─── Minute (0–59)<br>
+          │ ┌─── Stunde (0–23)<br>
+          │ │ ┌─── Tag (1–31)<br>
+          │ │ │ ┌─── Monat (1–12)<br>
+          │ │ │ │ ┌─── Wochentag (0–7, 0/7=So)<br>
+          │ │ │ │ │<br>
+          <span style="color:var(--accent)">* * * * *</span>
+        </div>
+        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:8px">
+          ${[['0 6 * * *','tägl. 06:00'],['0 */6 * * *','alle 6h'],['0 0 * * 0','Sonntag 00:00'],['*/30 * * * *','alle 30min'],['0 4 * * 1-5','Mo–Fr 04:00']].map(([c,l])=>`<button class="badge-alloc text-sm" onclick="document.getElementById('m-cron')&&(document.getElementById('m-cron').value='${c}')">${esc(l)}<span class="text-mono text-dim" style="margin-left:6px">${c}</span></button>`).join('')}
+        </div>
+      </div>`;
+  } catch(e) {
+    root.innerHTML = `<div class="empty"><p>Fehler: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function cronHuman(expr) {
+  const presets = {
+    '0 * * * *': 'Stündlich','0 0 * * *': 'Täglich 00:00','0 6 * * *': 'Täglich 06:00',
+    '0 */6 * * *': 'Alle 6 Stunden','0 0 * * 0': 'Wöchentlich (So)','*/5 * * * *': 'Alle 5 min',
+    '*/30 * * * *': 'Alle 30 min',
+  };
+  return presets[expr] || '';
+}
+
+function showCreateTask(serverId) {
+  showModal(`
+    <div class="modal-title"><span>⏰ Task erstellen</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group"><label class="form-label">Name *</label><input id="m-tname" class="form-input" placeholder="Nächtlicher Neustart"/></div>
+    <div class="form-group"><label class="form-label">Aktion *</label>
+      <select id="m-taction" class="form-input" onchange="document.getElementById('m-payload-row').classList.toggle('hidden',this.value!=='command')">
+        <option value="restart">↺ Restart</option>
+        <option value="stop">■ Stop</option>
+        <option value="start">▶ Start</option>
+        <option value="command">⌨️ Befehl</option>
+      </select>
+    </div>
+    <div id="m-payload-row" class="form-group hidden"><label class="form-label">Befehl</label><input id="m-tpayload" class="form-input" placeholder="say Server-Neustart in 1 Minute"/></div>
+    <div class="form-group"><label class="form-label">Cron-Expression *</label><input id="m-cron" class="form-input" placeholder="0 4 * * *" value="0 4 * * *"/><p class="text-dim text-sm" style="margin-top:4px">Klicke auf ein Preset unten oder gib manuell ein.</p></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+      ${[['0 4 * * *','Tägl. 04:00'],['0 */6 * * *','Alle 6h'],['*/30 * * * *','Alle 30min'],['0 0 * * 0','Wöchentl.']].map(([c,l])=>`<button class="badge-alloc text-sm" onclick="document.getElementById('m-cron').value='${c}'">${esc(l)}</button>`).join('')}
+    </div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="submitCreateTask('${serverId}')">Erstellen</button></div>`);
+}
+
+async function submitCreateTask(serverId) {
+  const name    = document.getElementById('m-tname').value.trim();
+  const action  = document.getElementById('m-taction').value;
+  const payload = document.getElementById('m-tpayload')?.value.trim() || '';
+  const cron    = document.getElementById('m-cron').value.trim();
+  const errEl   = document.getElementById('m-error');
+  if (!name || !cron) { errEl.textContent='Name und Cron sind erforderlich'; errEl.classList.remove('hidden'); return; }
+  try {
+    await API.post(`/servers/${serverId}/schedule`, { name, action, payload, cron });
+    toast('Task erstellt', 'success');
+    closeModal();
+    scheduleInit(serverId);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function taskRun(serverId, taskId) {
+  try {
+    await API.post(`/servers/${serverId}/schedule/${taskId}/run`, {});
+    toast('Task ausgeführt', 'success');
+    scheduleInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function taskToggle(serverId, taskId, enabled) {
+  try {
+    await API.patch(`/servers/${serverId}/schedule/${taskId}`, { enabled });
+    scheduleInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function taskDelete(serverId, taskId) {
+  if (!confirm('Task wirklich löschen?')) return;
+  try {
+    await API.delete(`/servers/${serverId}/schedule/${taskId}`);
+    toast('Task gelöscht', 'success');
+    scheduleInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ─── SERVER KLONEN ────────────────────────────────────────────────────────────
+function showCloneServer(id, name) {
+  showModal(`
+    <div class="modal-title"><span>⧉ Server klonen</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <p class="text-dim" style="margin-bottom:16px">Erstellt eine neue Instanz mit gleicher Konfiguration wie <strong>${esc(name)}</strong>.</p>
+    <div class="form-group"><label class="form-label">Name des neuen Servers *</label><input id="m-clone-name" class="form-input" value="${esc(name)} (Kopie)"/></div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button><button class="btn btn-primary" onclick="submitClone('${id}')">Klonen</button></div>`);
+}
+
+async function submitClone(id) {
+  const name = document.getElementById('m-clone-name').value.trim();
+  const errEl = document.getElementById('m-error');
+  if (!name) { errEl.textContent='Name erforderlich'; errEl.classList.remove('hidden'); return; }
+  try {
+    const newSrv = await API.post(`/servers/${id}/clone`, { name });
+    toast('Server wird geklont...', 'success');
+    closeModal();
+    navigate('server-detail', newSrv.id);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+
+// ─── SUB-USER TAB ─────────────────────────────────────────────────────────────
+const PERM_LABELS = { console:'Konsole', files:'Dateien', startup:'Startup', allocations:'Ports', schedule:'Tasks', backups:'Backups' };
+
+async function subusersInit(serverId) {
+  const root = document.getElementById('users-root');
+  if (!root) return;
+  root.innerHTML = '<div class="empty"><div class="spin">👥</div></div>';
+  try {
+    const [subs, permsInfo] = await Promise.all([
+      API.get(`/servers/${serverId}/subusers`),
+      API.get(`/servers/${serverId}/subusers/permissions`),
+    ]);
+    const isOwner = State.server?.user_id === State.user?.id || State.user?.role === 'admin';
+    root.innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div>
+            <div class="card-title">👥 Zugriffsverwaltung</div>
+            <div class="text-dim text-sm" style="margin-top:4px">Gib anderen Nutzern eingeschränkten Zugriff auf diesen Server.</div>
+          </div>
+          ${isOwner ? `<button class="btn btn-primary btn-sm" onclick="showInviteSubuser('${serverId}')">＋ Einladen</button>` : ''}
+        </div>
+        ${subs.length === 0
+          ? '<div class="empty" style="padding:24px"><p>Keine Sub-User eingeladen</p></div>'
+          : subs.map(s => subuserRow(s, serverId, isOwner)).join('')
+        }
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="card-title" style="margin-bottom:12px">🔑 Berechtigungen erklärt</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">
+          ${permsInfo.map(p => `
+            <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
+              <div style="font-weight:600;font-size:13px">${esc(p.label)}</div>
+              <div class="text-dim text-sm" style="margin-top:3px">${esc(p.description)}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+  } catch(e) {
+    root.innerHTML = `<div class="empty"><p>Fehler: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function subuserRow(s, serverId, isOwner) {
+  const initials = (s.username||'?').substring(0,2).toUpperCase();
+  const allPerms = ['console','files','startup','allocations','schedule','backups'];
+  const chips = allPerms.map(p => {
+    const active = s.permissions.includes(p);
+    return `<span class="perm-chip${active?' active':''}" data-perm="${p}" ${isOwner?`onclick="toggleSubPerm('${serverId}','${s.id}',this)"`:''} title="${PERM_LABELS[p]||p}">${PERM_LABELS[p]||p}</span>`;
+  }).join('');
+  return `
+    <div class="subuser-row">
+      <div class="subuser-avatar">${initials}</div>
+      <div class="subuser-info">
+        <div class="subuser-name">${esc(s.username)}</div>
+        <div class="subuser-email">${esc(s.email)}</div>
+        <div class="perm-chips">${chips}</div>
+      </div>
+      ${isOwner ? `<button class="btn btn-ghost btn-sm text-danger" onclick="removeSubuser('${serverId}','${s.id}')" title="Entfernen">✕</button>` : ''}
+    </div>`;
+}
+
+async function toggleSubPerm(serverId, subId, chip) {
+  const perm = chip.dataset.perm;
+  // Get current row's chips to build new perm list
+  const row = chip.closest('.subuser-row');
+  const chips = row.querySelectorAll('.perm-chip');
+  let perms = [...chips].filter(c => c.classList.contains('active')).map(c => c.dataset.perm);
+  if (chip.classList.contains('active')) {
+    perms = perms.filter(p => p !== perm);
+  } else {
+    perms.push(perm);
+  }
+  try {
+    await API.patch(`/servers/${serverId}/subusers/${subId}`, { permissions: perms });
+    chip.classList.toggle('active');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function removeSubuser(serverId, subId) {
+  if (!confirm('Zugriff wirklich entziehen?')) return;
+  try {
+    await API.delete(`/servers/${serverId}/subusers/${subId}`);
+    toast('Sub-User entfernt', 'success');
+    subusersInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function showInviteSubuser(serverId) {
+  showModal(`
+    <div class="modal-title"><span>👥 Nutzer einladen</span><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="form-group">
+      <label class="form-label">E-Mail des Nutzers *</label>
+      <input id="m-sub-email" class="form-input" type="email" placeholder="user@example.com"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Berechtigungen</label>
+      <div class="perm-chips" style="margin-top:6px">
+        ${['console','files','startup','allocations','schedule'].map(p =>
+          `<span class="perm-chip active" data-perm="${p}" onclick="this.classList.toggle('active')">${PERM_LABELS[p]}</span>`
+        ).join('')}
+      </div>
+    </div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitInviteSubuser('${serverId}')">Einladen</button>
+    </div>`);
+}
+
+async function submitInviteSubuser(serverId) {
+  const email = document.getElementById('m-sub-email').value.trim();
+  const perms = [...document.querySelectorAll('.perm-chips .perm-chip.active')].map(c => c.dataset.perm);
+  const errEl = document.getElementById('m-error');
+  if (!email) { errEl.textContent='E-Mail erforderlich'; errEl.classList.remove('hidden'); return; }
+  try {
+    await API.post(`/servers/${serverId}/subusers`, { email, permissions: perms });
+    toast('Nutzer eingeladen', 'success');
+    closeModal();
+    subusersInit(serverId);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+// ─── AKTIVITÄTS-LOG TAB ────────────────────────────────────────────────────────
+const ACTIVITY_COLORS = {
+  SERVER_START:'#00f5a0', SERVER_STOP:'#f59e0b', SERVER_RESTART:'#60a5fa',
+  SERVER_CREATE:'#00f5a0', SERVER_DELETE:'#ff4757', SERVER_CLONE:'#a78bfa',
+  FILE_WRITE:'#fbbf24', FILE_DELETE:'#ff4757', FILE_CREATE:'#fbbf24',
+  MOD_INSTALL:'#34d399', MOD_DELETE:'#ff4757',
+  PORT_ASSIGN:'#60a5fa', PORT_REMOVE:'#f59e0b', PORT_SET_PRIMARY:'#60a5fa',
+  TASK_CREATE:'#a78bfa', TASK_DELETE:'#f59e0b',
+  SUBUSER_ADD:'#00d4ff', SUBUSER_REMOVE:'#ff4757', SUBUSER_UPDATE:'#60a5fa',
+};
+const ACTIVITY_ICONS = {
+  SERVER_START:'▶', SERVER_STOP:'■', SERVER_RESTART:'↺',
+  SERVER_CREATE:'✚', SERVER_DELETE:'🗑', SERVER_CLONE:'⧉',
+  FILE_WRITE:'✏️', FILE_DELETE:'🗑', FILE_CREATE:'📄',
+  MOD_INSTALL:'🧩', PORT_ASSIGN:'🔌', TASK_CREATE:'⏰',
+  SUBUSER_ADD:'👤', SUBUSER_REMOVE:'👤', LOGIN:'🔑',
+};
+
+async function activityInit(serverId) {
+  const root = document.getElementById('activity-root');
+  if (!root) return;
+  root.innerHTML = '<div class="empty"><div class="spin">📋</div></div>';
+  try {
+    const logs = await API.get(`/admin/audit-log/server/${serverId}?limit=100`);
+    root.innerHTML = `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div class="card-title">📋 Server-Aktivität</div>
+          <button class="btn btn-ghost btn-sm" onclick="activityInit('${serverId}')">↺ Neu laden</button>
+        </div>
+        ${logs.length === 0
+          ? '<div class="empty" style="padding:24px"><p>Noch keine Aktivitäten aufgezeichnet</p></div>'
+          : logs.map(l => {
+              const color = ACTIVITY_COLORS[l.action] || '#64748b';
+              const icon  = ACTIVITY_ICONS[l.action]  || '●';
+              let detail = '';
+              try { const d = JSON.parse(l.details||'{}'); detail = Object.entries(d).map(([k,v])=>`${k}: ${String(v).substring(0,40)}`).join(' · '); } catch {}
+              const timeAgo = timeSince(new Date(l.created_at));
+              return `<div class="activity-item">
+                <div class="activity-dot" style="background:${color}"></div>
+                <div class="activity-body">
+                  <div class="activity-action"><span style="color:${color}">${icon}</span> ${esc(l.action.replace(/_/g,' ').toLowerCase().replace(/\b\w/g,c=>c.toUpperCase()))}</div>
+                  ${detail ? `<div class="activity-meta">${esc(detail)}</div>` : ''}
+                  <div class="activity-meta">von <strong>${esc(l.username||'system')}</strong> · ${timeAgo} · ${l.ip||''}</div>
+                </div>
+                <div style="font-size:11px;color:var(--text3);white-space:nowrap">${new Date(l.created_at).toLocaleString('de-DE',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})}</div>
+              </div>`;
+            }).join('')
+        }
+      </div>`;
+  } catch(e) {
+    root.innerHTML = `<div class="empty"><p>Fehler: ${esc(e.message)}</p></div>`;
+  }
+}
+
+function timeSince(date) {
+  const s = Math.floor((new Date() - date) / 1000);
+  if (s < 60)  return 'gerade eben';
+  if (s < 3600) return Math.floor(s/60) + ' min';
+  if (s < 86400) return Math.floor(s/3600) + ' Std';
+  return Math.floor(s/86400) + ' Tage';
+}
+
+</script>
+</body>
+</html>
