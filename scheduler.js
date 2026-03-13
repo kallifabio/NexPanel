@@ -47,15 +47,46 @@ async function tick() {
   }
 }
 
+
+// ─── AUTO-UPDATE TICK ─────────────────────────────────────────────────────────
+async function autoUpdateTick() {
+  try {
+    const settings = db.prepare(`
+      SELECT s.*, srv.id as srv_id, srv.container_id, srv.node_id, srv.image, srv.env_vars
+      FROM mod_update_settings s
+      JOIN servers srv ON srv.id = s.server_id
+      WHERE s.auto_update = 1 AND srv.container_id IS NOT NULL AND srv.container_id != ''
+    `).all();
+
+    for (const row of settings) {
+      // Cooldown prüfen
+      const intervalMs = (row.check_interval_h || 6) * 60 * 60 * 1000;
+      const lastCheck  = row.last_check_at ? new Date(row.last_check_at).getTime() : 0;
+      if (Date.now() - lastCheck < intervalMs) continue;
+
+      console.log(`[mod-autoupdate] Prüfe Server ${row.server_id}...`);
+      try {
+        const { checkAndAutoUpdate } = require('./mod-auto-updater');
+        await checkAndAutoUpdate(row.server_id);
+      } catch (e) {
+        console.warn(`[mod-autoupdate] Fehler bei Server ${row.server_id}:`, e.message);
+      }
+    }
+  } catch (e) {
+    console.warn('[mod-autoupdate] Tick-Fehler:', e.message);
+  }
+}
+
 function startScheduler() {
   if (_interval) return;
   // Nächste volle Minute abwarten, dann jede Minute
   const msToNextMinute = (60 - new Date().getSeconds()) * 1000;
   setTimeout(() => {
     tick();
-    _interval = setInterval(tick, 60_000);
+    _interval = setInterval(() => { tick(); if (new Date().getMinutes() % 10 === 0) autoUpdateTick().catch(()=>{}); }, 60_000);
   }, msToNextMinute);
   console.log(`[scheduler] Gestartet — läuft in ${Math.round(msToNextMinute/1000)}s zum ersten Mal`);
+  setTimeout(() => autoUpdateTick().catch(()=>{}), 2 * 60 * 1000);
 }
 
 function stopScheduler() {

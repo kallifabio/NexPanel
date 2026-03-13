@@ -98,7 +98,7 @@ async function createContainer(serverId, cfg) {
 
   const container = await docker.createContainer({
     Image:        image,
-    name:         `hostpanel_${serverId.substring(0, 8)}`,
+    name:         `nexpanel_${serverId.substring(0, 8)}`,
     Env:          Object.entries(env_vars).map(([k, v]) => `${k}=${v}`),
     WorkingDir:   work_dir,
     ExposedPorts: exposedPorts,
@@ -113,7 +113,7 @@ async function createContainer(serverId, cfg) {
       RestartPolicy: { Name: 'on-failure', MaximumRetryCount: 3 },
       PidsLimit:     256,
     },
-    Labels: { 'hostpanel.managed': 'true', 'hostpanel.server_id': serverId },
+    Labels: { 'nexpanel.managed': 'true', 'nexpanel.server_id': serverId },
   });
   return { success: true, container_id: container.id };
 }
@@ -339,12 +339,133 @@ async function filesCompress(containerId, paths, destination) {
   return { success: true };
 }
 
+// ─── DISK-NUTZUNG ─────────────────────────────────────────────────────────────
+async function diskUsage(containerId, workDir = '/home/container') {
+  if (!docker || !containerId) return { bytes_used: 0 };
+  try {
+    const exec = await docker.getContainer(containerId).exec({
+      Cmd: ['sh', '-c', `du -sb "${workDir}" 2>/dev/null | awk '{print $1}' || echo "0"`],
+      AttachStdout: true, AttachStderr: true,
+    });
+    const stream = await exec.start({ hijack: true, stdin: false });
+    const output = await new Promise((resolve) => {
+      let buf = Buffer.alloc(0);
+      stream.on('data', chunk => { buf = Buffer.concat([buf, chunk]); });
+      stream.on('end', () => resolve(demuxDockerLogs(buf)));
+    });
+    const bytes = parseInt(output.trim().split(/[\s\n]+/)[0]) || 0;
+    return { success: true, bytes_used: bytes };
+  } catch {
+    return { success: true, bytes_used: 0 };
+  }
+}
+
+// ─── BACKUP ERSTELLEN ─────────────────────────────────────────────────────────
+async function createBackup(containerId, workDir, filePath) {
+  if (!docker || !containerId) throw new Error('Kein Container');
+  const fs   = require('fs');
+  const fsP  = require('fs').promises;
+  const path = require('path');
+  const zlib = require('zlib');
+
+  await fsP.mkdir(path.dirname(filePath), { recursive: true });
+
+  const container = docker.getContainer(containerId);
+
+  // ── Echtes WorkingDir aus Container auslesen ───────────────────────────────
+  // Fallback-Kette: Parameter → Container-Inspect WorkingDir → /data (itzg) → /
+  let resolvedPath = workDir;
+  try {
+    const info   = await container.inspect();
+    const image  = (info.Config?.Image || '').toLowerCase();
+    const inspWd = info.Config?.WorkingDir;
+
+    if (!resolvedPath || resolvedPath === '/home/container') {
+      // itzg images always use /data
+      if (image.includes('itzg') || image.includes('minecraft-server')) {
+        resolvedPath = '/data';
+      } else if (inspWd && inspWd !== '/') {
+        resolvedPath = inspWd;
+      } else {
+        resolvedPath = '/';
+      }
+    }
+
+    // Verify the path actually exists in the container
+    const testExec = await container.exec({
+      Cmd: ['test', '-d', resolvedPath],
+      AttachStdout: false, AttachStderr: false,
+    });
+    const testStream = await testExec.start({ hijack: true });
+    const exitCode   = await new Promise(resolve => {
+      testStream.on('end', async () => {
+        try { const r = await testExec.inspect(); resolve(r.ExitCode); }
+        catch { resolve(0); }
+      });
+      testStream.resume();
+    });
+
+    if (exitCode !== 0) {
+      // Path doesn't exist — fall back to /
+      console.warn(`[backup] Pfad "${resolvedPath}" existiert nicht im Container, nutze /`);
+      resolvedPath = '/';
+    }
+  } catch (e) {
+    console.warn('[backup] Container-Inspect fehlgeschlagen, nutze angegebenen Pfad:', e.message);
+  }
+
+  console.log(`[backup] Erstelle Backup von "${resolvedPath}" → ${filePath}`);
+
+  const archiveStream = await new Promise((resolve, reject) => {
+    container.getArchive({ path: resolvedPath }, (err, stream) => {
+      if (err) return reject(new Error(`getArchive fehlgeschlagen (Pfad: ${resolvedPath}): ${err.message}`));
+      resolve(stream);
+    });
+  });
+
+  const gzip   = zlib.createGzip({ level: 6 });
+  const output = fs.createWriteStream(filePath);
+
+  await new Promise((resolve, reject) => {
+    archiveStream.on('error', reject);
+    gzip.on('error', reject);
+    output.on('error', reject);
+    output.on('finish', resolve);
+    archiveStream.pipe(gzip).pipe(output);
+  });
+
+  return { success: true, path: resolvedPath };
+}
+
+// ─── BACKUP WIEDERHERSTELLEN ──────────────────────────────────────────────────
+async function restoreBackup(containerId, workDir, filePath) {
+  if (!docker || !containerId) throw new Error('Kein Container');
+  const fs   = require('fs');
+  const zlib = require('zlib');
+
+  if (!fs.existsSync(filePath)) throw new Error('Backup-Datei nicht gefunden: ' + filePath);
+
+  const container = docker.getContainer(containerId);
+  const input     = fs.createReadStream(filePath);
+  const gunzip    = zlib.createGunzip();
+  const tarStream = input.pipe(gunzip);
+
+  await new Promise((resolve, reject) => {
+    container.putArchive(tarStream, { path: workDir }, (err) => {
+      if (err) reject(err); else resolve();
+    });
+  });
+
+  return { success: true };
+}
+
 module.exports = {
   docker, isAvailable,
   getStats, createContainer, powerAction,
-  getLogs, followLogs, execCommand, sendStdin, removeContainer, updateContainerPorts, updateContainerPorts,
+  getLogs, followLogs, execCommand, sendStdin, removeContainer, updateContainerPorts,
   listImages, pullImage, getDockerInfo,
   filesList, filesRead, filesWrite, filesCreate, filesDelete, filesRename, filesCompress,
+  diskUsage, createBackup, restoreBackup,
 };
 
 // ─── PORTS AKTUALISIEREN (Container neu erstellen) ───────────────────────────

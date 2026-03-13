@@ -1,7 +1,7 @@
 {
-  "name": "hostpanel",
+  "name": "nexpanel",
   "version": "2.0.0",
-  "description": "HostPanel \u2014 Multi-Node Server Management (v1+v2 Merged)",
+  "description": "NexPanel \u2014 Self-hosted multi-node server management panel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -17,7 +17,11 @@
     "jsonwebtoken": "^9.0.2",
     "uuid": "^9.0.0",
     "ws": "^8.16.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "ssh2": "^1.15.0",
+    "archiver": "^7.0.1",
+    "speakeasy": "^2.0.0",
+    "qrcode": "^1.5.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.3"

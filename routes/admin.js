@@ -88,7 +88,7 @@ router.get('/audit-log/server/:serverId', authenticate, (req, res) => {
 
 // ─── ADMIN: BENUTZER ─────────────────────────────────────────────────────────
 router.get('/users', authenticate, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id,username,email,role,is_suspended,created_at FROM users ORDER BY created_at DESC').all();
+  const users = db.prepare('SELECT id,username,email,role,is_suspended,suspend_reason,created_at FROM users ORDER BY created_at DESC').all();
   const counts = db.prepare('SELECT user_id, COUNT(*) as c FROM servers GROUP BY user_id').all();
   const cm = Object.fromEntries(counts.map(r => [r.user_id, r.c]));
   res.json(users.map(u => ({ ...u, server_count: cm[u.id] || 0 })));
@@ -111,7 +111,7 @@ router.post('/users', authenticate, requireAdmin, async (req, res) => {
 
 router.patch('/users/:id', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { username, email, role, is_suspended, password } = req.body;
+    const { username, email, role, is_suspended, suspend_reason, password } = req.body;
     const user = db.prepare('SELECT * FROM users WHERE id=?').get(req.params.id);
     if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
     const upd = {};
@@ -119,11 +119,14 @@ router.patch('/users/:id', authenticate, requireAdmin, async (req, res) => {
     if (email) upd.email = email.toLowerCase();
     if (role) upd.role = role;
     if (is_suspended !== undefined) upd.is_suspended = is_suspended ? 1 : 0;
+    if (suspend_reason !== undefined) upd.suspend_reason = suspend_reason || '';
     if (password) upd.password_hash = await bcrypt.hash(password, 12);
     upd.updated_at = new Date().toISOString();
     const set = Object.keys(upd).map(k => `${k}=?`).join(',');
     db.prepare(`UPDATE users SET ${set} WHERE id=?`).run(...Object.values(upd), req.params.id);
-    auditLog(req.user.id, 'USER_UPDATE', 'user', req.params.id, upd, req.ip);
+    // Alle Sessions des gesperrten Users beenden
+    if (is_suspended) db.prepare("DELETE FROM user_sessions WHERE user_id=?").run(req.params.id);
+    auditLog(req.user.id, 'USER_UPDATE', 'user', req.params.id, { ...upd, password_hash: undefined }, req.ip);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

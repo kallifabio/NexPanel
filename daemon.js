@@ -1,6 +1,6 @@
 'use strict';
 /**
- * daemon.js — HostPanel Node-Daemon
+ * daemon.js — NexPanel Node-Daemon
  * Läuft auf jedem Remote-Node-Server.
  * Verbindet sich ausgehend per WebSocket zum Panel.
  * Führt Docker-Befehle lokal aus und streamt Ergebnisse zurück.
@@ -127,7 +127,7 @@ async function handleMessage(ws, msg) {
 
       const container = await docker.createContainer({
         Image:        img,
-        name:         `hostpanel_${server_id.substring(0, 8)}`,
+        name:         `nexpanel_${server_id.substring(0, 8)}`,
         Env:          Object.entries(env_vars).map(([k, v]) => `${k}=${v}`),
         WorkingDir:   work_dir,
         ExposedPorts: exposedPorts,
@@ -141,7 +141,7 @@ async function handleMessage(ws, msg) {
           RestartPolicy: { Name: 'unless-stopped' },
           PidsLimit:     256,
         },
-        Labels: { 'hostpanel.managed': 'true', 'hostpanel.server_id': server_id },
+        Labels: { 'nexpanel.managed': 'true', 'nexpanel.server_id': server_id },
       });
       return { container_id: container.id };
     }
@@ -324,7 +324,7 @@ async function getSystemInfo() {
 // ─── START ────────────────────────────────────────────────────────────────────
 console.log(`
 ╔══════════════════════════════════════════════╗
-║         HostPanel Node-Daemon v2.0           ║
+║         NexPanel Node-Daemon v3.0           ║
 ╠══════════════════════════════════════════════╣
 ║  Node-ID: ${NODE_ID.substring(0, 34).padEnd(34)}║
 ║  Panel:   ${PANEL_URL.substring(0, 34).padEnd(34)}║

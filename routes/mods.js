@@ -22,7 +22,7 @@ const router = express.Router({ mergeParams: true });
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const CURSEFORGE_KEY = process.env.CURSEFORGE_API_KEY || '';
-const MODRINTH_UA    = 'HostPanel/2.0 (github.com/hostpanel)';
+const MODRINTH_UA    = 'NexPanel/3.0 (github.com/nexpanel)';
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function canAccess(req, res, next) {
@@ -451,6 +451,379 @@ router.delete('/installed', authenticate, canAccess, async (req, res) => {
     auditLog(req.user.id, 'MOD_DELETE', 'server', srv.id, { path: filePath }, req.ip);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MOD AUTO-UPDATE ENGINE
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── POST body helper (für Modrinth batch lookup) ─────────────────────────────
+function httpsPostJSON(url, body) {
+  return new Promise((resolve, reject) => {
+    const u    = new URL(url);
+    const data = JSON.stringify(body);
+    const opts = {
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      method: 'POST',
+      headers: {
+        'Content-Type':   'application/json',
+        'Content-Length': Buffer.byteLength(data),
+        'User-Agent':     MODRINTH_UA,
+        'Accept':         'application/json',
+      },
+    };
+    const req = https.request(opts, res => {
+      let buf = '';
+      res.on('data', c => buf += c);
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, body: JSON.parse(buf) }); }
+        catch { resolve({ status: res.statusCode, body: buf }); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15_000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.write(data);
+    req.end();
+  });
+}
+
+// ─── SHA1-Hashes aller JARs im Container berechnen ───────────────────────────
+async function getModHashes(srv) {
+  const base = (srv.image||'').includes('itzg') || (srv.image||'').includes('minecraft-server')
+    ? '/data' : '/home/container';
+  const platform = detectPlatform(srv);
+  const dirs = platform.game === 'minecraft'
+    ? [`${base}/plugins`, `${base}/mods`]
+    : [base];
+
+  const results = [];
+  for (const dir of dirs) {
+    // find *.jar, compute sha1 for each, output: hash  filename  dir
+    const out = await containerExec(srv,
+      `find "${dir}" -maxdepth 1 -name "*.jar" -type f 2>/dev/null | while read f; do ` +
+      `hash=$(sha1sum "$f" 2>/dev/null | cut -d' ' -f1); ` +
+      `echo "$hash\t$(basename "$f")\t$dir"; done || echo ""`,
+      30_000
+    ).catch(() => '');
+
+    for (const line of out.split('\n').filter(Boolean)) {
+      const parts = line.split('\t');
+      if (parts.length < 3 || !parts[0] || parts[0].length !== 40) continue;
+      const [hash, name, d] = parts;
+      results.push({ hash, name, dir: d });
+    }
+  }
+  return results;
+}
+
+// ─── Modrinth Batch Hash Lookup ───────────────────────────────────────────────
+// Returns map: hash → { project_id, version_id, version_number, project_title, ... }
+async function modrinthHashLookup(hashes) {
+  if (!hashes.length) return {};
+  const { status, body } = await httpsPostJSON(
+    'https://api.modrinth.com/v2/version_files',
+    { hashes, algorithm: 'sha1' }
+  );
+  if (status >= 400) return {};
+  // body is { [hash]: versionObject }
+  return body || {};
+}
+
+// ─── Neueste Modrinth-Version für ein Projekt + Loader ───────────────────────
+async function modrinthLatestVersion(projectId, loader) {
+  try {
+    const params = new URLSearchParams({ loaders: JSON.stringify([loader]) });
+    let versions = await fetchJSON(
+      `https://api.modrinth.com/v2/project/${projectId}/version?${params}`,
+      { 'User-Agent': MODRINTH_UA }
+    ).catch(() => null);
+
+    // retry without loader filter
+    if (!versions || !versions.length) {
+      versions = await fetchJSON(
+        `https://api.modrinth.com/v2/project/${projectId}/version`,
+        { 'User-Agent': MODRINTH_UA }
+      ).catch(() => []);
+    }
+    if (!versions || !versions.length) return null;
+    // First = most recent (Modrinth returns newest first)
+    const v = versions[0];
+    const primaryFile = (v.files||[]).find(f=>f.primary) || v.files?.[0];
+    return {
+      version_id:     v.id,
+      version_number: v.version_number,
+      name:           v.name,
+      date:           v.date_published,
+      changelog:      v.changelog || '',
+      game_versions:  v.game_versions || [],
+      loaders:        v.loaders || [],
+      download_url:   primaryFile?.url || null,
+      filename:       primaryFile?.filename || null,
+      file_size:      primaryFile?.size || 0,
+    };
+  } catch { return null; }
+}
+
+// ─── Modrinth Projekt-Info ─────────────────────────────────────────────────────
+async function modrinthProjectInfo(projectId) {
+  try {
+    return await fetchJSON(`https://api.modrinth.com/v2/project/${projectId}`, { 'User-Agent': MODRINTH_UA });
+  } catch { return null; }
+}
+
+// ─── GET /mods/update-settings ───────────────────────────────────────────────
+router.get('/update-settings', authenticate, canAccess, (req, res) => {
+  const serverId = req.params.serverId;
+  let row = db.prepare('SELECT * FROM mod_update_settings WHERE server_id=?').get(serverId);
+  if (!row) {
+    db.prepare(`INSERT OR IGNORE INTO mod_update_settings (server_id) VALUES (?)`).run(serverId);
+    row = db.prepare('SELECT * FROM mod_update_settings WHERE server_id=?').get(serverId);
+  }
+  res.json(row);
+});
+
+// ─── PUT /mods/update-settings ───────────────────────────────────────────────
+router.put('/update-settings', authenticate, canAccess, (req, res) => {
+  const serverId = req.params.serverId;
+  const { auto_update, check_interval_h, notify_on_update } = req.body;
+  db.prepare(`INSERT OR IGNORE INTO mod_update_settings (server_id) VALUES (?)`).run(serverId);
+  db.prepare(`
+    UPDATE mod_update_settings
+    SET auto_update=?, check_interval_h=?, notify_on_update=?
+    WHERE server_id=?
+  `).run(
+    auto_update ? 1 : 0,
+    Math.min(168, Math.max(1, parseInt(check_interval_h) || 6)),
+    notify_on_update ? 1 : 0,
+    serverId
+  );
+  auditLog(req.user.id, 'MOD_AUTO_UPDATE_CFG', 'server', serverId,
+    { auto_update, check_interval_h }, req.ip);
+  res.json({ success: true });
+});
+
+// ─── GET /mods/update-log ─────────────────────────────────────────────────────
+router.get('/update-log', authenticate, canAccess, (req, res) => {
+  const serverId = req.params.serverId;
+  const rows = db.prepare(`
+    SELECT * FROM mod_update_log WHERE server_id=? ORDER BY updated_at DESC LIMIT 50
+  `).all(serverId);
+  res.json(rows);
+});
+
+// ─── POST /mods/check-updates ─────────────────────────────────────────────────
+// Hauptendpunkt: berechnet Hashes, fragt Modrinth, gibt Update-Infos zurück
+router.post('/check-updates', authenticate, canAccess, async (req, res) => {
+  const srv = req.srv;
+  if (!srv.container_id) return res.status(400).json({ error: 'Container nicht bereit' });
+
+  try {
+    const platform = detectPlatform(srv);
+
+    // 1) SHA1 aller installierten JARs
+    const modFiles = await getModHashes(srv);
+    if (!modFiles.length) return res.json({ updates: [], checked: 0, matched: 0 });
+
+    // 2) Modrinth batch lookup
+    const hashes = modFiles.map(m => m.hash);
+    const hashMap = await modrinthHashLookup(hashes);
+
+    // 3) Für jede gematchte Version: neueste Version laden und vergleichen
+    // Dedupliziere nach project_id
+    const projectsSeen = new Set();
+    const updateChecks = [];
+
+    for (const modFile of modFiles) {
+      const versionInfo = hashMap[modFile.hash];
+      if (!versionInfo) {
+        // Nicht in Modrinth — unbekannt
+        updateChecks.push({
+          name: modFile.name,
+          hash: modFile.hash,
+          dir:  modFile.dir,
+          status: 'unknown',
+          project_id: null,
+          installed_version: null,
+          installed_version_id: null,
+          latest: null,
+          has_update: false,
+        });
+        continue;
+      }
+
+      const projectId = versionInfo.project_id;
+      if (projectsSeen.has(projectId)) continue;
+      projectsSeen.add(projectId);
+
+      const [latest, projectInfo] = await Promise.all([
+        modrinthLatestVersion(projectId, platform.loader),
+        modrinthProjectInfo(projectId),
+      ]);
+
+      const hasUpdate = latest && latest.version_id !== versionInfo.id &&
+        latest.version_number !== versionInfo.version_number;
+
+      updateChecks.push({
+        name:                  modFile.name,
+        hash:                  modFile.hash,
+        dir:                   modFile.dir,
+        status:                'tracked',
+        project_id:            projectId,
+        project_title:         projectInfo?.title || versionInfo.project_id,
+        project_icon:          projectInfo?.icon_url || null,
+        project_slug:          projectInfo?.slug || null,
+        installed_version:     versionInfo.version_number,
+        installed_version_id:  versionInfo.id,
+        installed_version_name: versionInfo.name,
+        latest,
+        has_update:            !!hasUpdate,
+      });
+    }
+
+    // Last-check timestamp
+    db.prepare(`INSERT OR IGNORE INTO mod_update_settings (server_id) VALUES (?)`).run(srv.id);
+    db.prepare(`UPDATE mod_update_settings SET last_check_at=datetime('now') WHERE server_id=?`).run(srv.id);
+
+    const checked = updateChecks.filter(u => u.status === 'tracked').length;
+    const updates = updateChecks.filter(u => u.has_update).length;
+
+    res.json({
+      updates:     updateChecks,
+      checked,
+      matched:     checked,
+      untracked:   updateChecks.filter(u => u.status === 'unknown').length,
+      has_updates: updates,
+      checked_at:  new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('[mods] check-updates Fehler:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ─── GET /mods/changelog/:projectId/:versionId ────────────────────────────────
+router.get('/changelog/:projectId/:versionId', authenticate, canAccess, async (req, res) => {
+  try {
+    const v = await fetchJSON(
+      `https://api.modrinth.com/v2/version/${req.params.versionId}`,
+      { 'User-Agent': MODRINTH_UA }
+    );
+    res.json({
+      version_number: v.version_number,
+      name:           v.name,
+      changelog:      v.changelog || 'Kein Changelog verfügbar.',
+      date:           v.date_published,
+      game_versions:  v.game_versions || [],
+      loaders:        v.loaders || [],
+      downloads:      v.downloads || 0,
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── POST /mods/update ────────────────────────────────────────────────────────
+// Aktualisiert einen einzelnen Mod: lädt neue Version, löscht alte
+router.post('/update', authenticate, canAccess, async (req, res) => {
+  const srv = req.srv;
+  if (!srv.container_id) return res.status(400).json({ error: 'Container nicht bereit' });
+
+  const {
+    old_path,          // vollständiger Pfad der alten Datei im Container
+    old_version,       // alte Versionsnummer
+    project_id,
+    project_title,
+    download_url,
+    filename,
+    dir,
+  } = req.body;
+
+  if (!download_url || !dir) return res.status(400).json({ error: 'download_url und dir erforderlich' });
+
+  try {
+    const destPath = `${dir}/${filename}`;
+
+    // mkdir sicherstellen
+    await containerExec(srv, `mkdir -p "${dir}"`);
+
+    // Neue Datei downloaden
+    const dlCmd = `wget -q -O "${destPath}" "${download_url}" 2>&1 && echo "DL_OK" || (curl -fsSL -o "${destPath}" "${download_url}" && echo "DL_OK")`;
+    const dlOut = await containerExec(srv, dlCmd, 120_000);
+
+    if (!dlOut.includes('DL_OK')) {
+      return res.status(500).json({ error: 'Download fehlgeschlagen', output: dlOut.slice(-300) });
+    }
+
+    // Alte Datei löschen (nur wenn != neue Datei)
+    if (old_path && old_path !== destPath) {
+      const base = (srv.image||'').includes('itzg') || (srv.image||'').includes('minecraft-server')
+        ? '/data' : '/home/container';
+      const allowedPrefixes = [`${base}/plugins/`, `${base}/mods/`, `${base}/`];
+      if (allowedPrefixes.some(p => old_path.startsWith(p))) {
+        await containerExec(srv, `rm -f "${old_path}"`);
+      }
+    }
+
+    // Dateigröße
+    const szOut  = await containerExec(srv, `stat -c%s "${destPath}" 2>/dev/null || echo "0"`);
+    const fileSize = parseInt(szOut.trim()) || 0;
+
+    // Update-Log
+    const { v4: uuidv4 } = require('uuid');
+    db.prepare(`
+      INSERT INTO mod_update_log (id, server_id, mod_name, old_version, new_version, project_id, status)
+      VALUES (?,?,?,?,?,?,'updated')
+    `).run(uuidv4(), srv.id, project_title || filename, old_version || '?', req.body.new_version || '?', project_id || null);
+
+    auditLog(req.user.id, 'MOD_UPDATE', 'server', srv.id,
+      { project_id, project_title, old_version, new_version: req.body.new_version, filename }, req.ip);
+
+    res.json({ success: true, filename, dest: destPath, file_size: fileSize });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── POST /mods/update-all ────────────────────────────────────────────────────
+// Automatisches Update aller Mods mit verfügbarem Update
+router.post('/update-all', authenticate, canAccess, async (req, res) => {
+  const srv = req.srv;
+  if (!srv.container_id) return res.status(400).json({ error: 'Container nicht bereit' });
+
+  const { updates } = req.body; // Array von update-objects aus check-updates
+  if (!Array.isArray(updates) || !updates.length)
+    return res.status(400).json({ error: 'updates-Array erforderlich' });
+
+  const results = [];
+  for (const upd of updates) {
+    if (!upd.has_update || !upd.latest?.download_url) continue;
+    try {
+      const oldPath  = `${upd.dir}/${upd.name}`;
+      const destPath = `${upd.dir}/${upd.latest.filename}`;
+      await containerExec(srv, `mkdir -p "${upd.dir}"`);
+      const dlCmd = `wget -q -O "${destPath}" "${upd.latest.download_url}" 2>&1 && echo "DL_OK" || (curl -fsSL -o "${destPath}" "${upd.latest.download_url}" && echo "DL_OK")`;
+      const dlOut = await containerExec(srv, dlCmd, 120_000);
+      const ok    = dlOut.includes('DL_OK');
+
+      if (ok && oldPath !== destPath) {
+        await containerExec(srv, `rm -f "${oldPath}"`);
+      }
+
+      const { v4: uuidv4 } = require('uuid');
+      db.prepare(`
+        INSERT INTO mod_update_log (id, server_id, mod_name, old_version, new_version, project_id, status)
+        VALUES (?,?,?,?,?,?,?)
+      `).run(uuidv4(), srv.id, upd.project_title || upd.name,
+        upd.installed_version || '?', upd.latest.version_number || '?',
+        upd.project_id || null, ok ? 'updated' : 'failed');
+
+      results.push({ name: upd.project_title || upd.name, success: ok, filename: upd.latest.filename });
+    } catch (e) {
+      results.push({ name: upd.project_title || upd.name, success: false, error: e.message });
+    }
+  }
+
+  auditLog(req.user.id, 'MOD_UPDATE_ALL', 'server', srv.id,
+    { count: results.length, success: results.filter(r=>r.success).length }, req.ip);
+
+  res.json({ results, updated: results.filter(r=>r.success).length, total: results.length });
 });
 
 module.exports = router;

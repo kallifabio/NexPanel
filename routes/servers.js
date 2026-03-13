@@ -57,13 +57,29 @@ router.post('/', authenticate, async (req, res) => {
 
     if (!name || !image) return res.status(400).json({ error: 'Name und Image sind erforderlich' });
 
-    // Node bestimmen (oder Standard-Node falls nicht angegeben)
+    // Node bestimmen — Auto-Scaling oder Standard-Node
     let targetNodeId = node_id;
+    let scalingReason = null;
     if (!targetNodeId) {
-      const defaultNode = db.prepare('SELECT id FROM nodes WHERE is_default=1').get()
-        || db.prepare('SELECT id FROM nodes ORDER BY created_at ASC').get();
-      if (!defaultNode) return res.status(400).json({ error: 'Kein Node verfügbar. Bitte zuerst einen Node einrichten.' });
-      targetNodeId = defaultNode.id;
+      try {
+        const { getBestNode } = require('../scaling');
+        const best = getBestNode({ mem_mb: memory_limit, disk_mb: disk_limit, cpu_cores: cpu_limit });
+        if (best) {
+          targetNodeId  = best.node_id;
+          scalingReason = best.reason;
+        }
+      } catch (scalingErr) {
+        console.warn('[scaling] getBestNode Fehler:', scalingErr.message);
+      }
+
+      if (!targetNodeId) {
+        // Fallback: Standard-Node
+        const defaultNode = db.prepare('SELECT id FROM nodes WHERE is_default=1').get()
+          || db.prepare('SELECT id FROM nodes ORDER BY created_at ASC').get();
+        if (!defaultNode) return res.status(400).json({ error: 'Kein Node verfügbar. Bitte zuerst einen Node einrichten.' });
+        targetNodeId  = defaultNode.id;
+        scalingReason = 'Standard-Node (Fallback)';
+      }
     }
 
     const node = db.prepare('SELECT * FROM nodes WHERE id=?').get(targetNodeId);
@@ -127,7 +143,7 @@ router.post('/', authenticate, async (req, res) => {
       }
     })();
 
-    auditLog(req.user.id, 'SERVER_CREATE', 'server', id, { name, image, node_id: targetNodeId }, req.ip);
+    auditLog(req.user.id, 'SERVER_CREATE', 'server', id, { name, image, node_id: targetNodeId, scaling_reason: scalingReason }, req.ip);
     const created = db.prepare('SELECT * FROM servers WHERE id=?').get(id);
     res.status(201).json({ ...created, ports: JSON.parse(created.ports), env_vars: JSON.parse(created.env_vars) });
   } catch (e) { res.status(500).json({ error: e.message }); }

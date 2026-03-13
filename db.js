@@ -11,8 +11,8 @@ const bcrypt   = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const path     = require('path');
 
-const DB_PATH    = process.env.DB_PATH    || './hostpanel.db';
-const ADMIN_EMAIL= process.env.ADMIN_EMAIL|| 'admin@hostpanel.local';
+const DB_PATH    = process.env.DB_PATH    || './nexpanel.db';
+const ADMIN_EMAIL= process.env.ADMIN_EMAIL|| 'admin@nexpanel.local';
 const ADMIN_PASS = process.env.ADMIN_PASS || process.env.ADMIN_PASSWORD || 'admin123';
 const DOCKER_SOCK= process.env.DOCKER_SOCKET || '/var/run/docker.sock';
 
@@ -24,6 +24,7 @@ db.pragma('foreign_keys = ON');
 // ─── MIGRATIONS
 try { db.prepare("ALTER TABLE servers ADD COLUMN cpu_percent INTEGER DEFAULT 100").run(); } catch(e){}
 try { db.prepare("ALTER TABLE port_allocations ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0").run(); } catch(e){}
+try { db.prepare("INSERT OR IGNORE INTO smtp_config (id) VALUES (1)").run(); } catch(e){}
 try { db.prepare("ALTER TABLE port_allocations ADD COLUMN notes TEXT NOT NULL DEFAULT ''").run(); } catch(e){}
 
 db.exec(`
@@ -195,6 +196,74 @@ function getOrCreateJwtSecret() {
   return row.value;
 }
 
+try { db.prepare("ALTER TABLE users ADD COLUMN totp_secret TEXT DEFAULT NULL").run(); } catch(e){}
+try { db.prepare("ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0").run(); } catch(e){}
+try { db.prepare("ALTER TABLE users ADD COLUMN totp_backup_codes TEXT DEFAULT NULL").run(); } catch(e){}
+
+
+try { db.prepare(`
+  CREATE TABLE IF NOT EXISTS resource_alert_rules (
+    server_id         TEXT PRIMARY KEY,
+    enabled           INTEGER NOT NULL DEFAULT 1,
+    cpu_warn          INTEGER DEFAULT 80,
+    cpu_crit          INTEGER DEFAULT 95,
+    ram_warn          INTEGER DEFAULT 80,
+    ram_crit          INTEGER DEFAULT 95,
+    disk_warn         INTEGER DEFAULT 75,
+    disk_crit         INTEGER DEFAULT 90,
+    cooldown_minutes  INTEGER DEFAULT 30,
+    last_fired        TEXT    DEFAULT '{}',
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  )
+`).run(); } catch(e){}
+
+
+// ── OAuth Migrations ──────────────────────────────────────────────────────────
+try { db.prepare("ALTER TABLE users ADD COLUMN password_hash_nullable TEXT").run(); } catch(e){}
+try { db.prepare(`
+  CREATE TABLE IF NOT EXISTS oauth_connections (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL,
+    provider     TEXT NOT NULL,
+    provider_id  TEXT NOT NULL,
+    username     TEXT DEFAULT '',
+    email        TEXT DEFAULT '',
+    avatar_url   TEXT DEFAULT '',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(provider, provider_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  )
+`).run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_oauth_user ON oauth_connections(user_id)").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_oauth_provider ON oauth_connections(provider, provider_id)").run(); } catch(e){}
+
+
+// ── Mod Auto-Update Migrations ────────────────────────────────────────────────
+try { db.prepare(`
+  CREATE TABLE IF NOT EXISTS mod_update_settings (
+    server_id          TEXT PRIMARY KEY,
+    auto_update        INTEGER NOT NULL DEFAULT 0,
+    check_interval_h   INTEGER NOT NULL DEFAULT 6,
+    last_check_at      TEXT,
+    notify_on_update   INTEGER NOT NULL DEFAULT 1,
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  )
+`).run(); } catch(e){}
+try { db.prepare(`
+  CREATE TABLE IF NOT EXISTS mod_update_log (
+    id           TEXT PRIMARY KEY,
+    server_id    TEXT NOT NULL,
+    mod_name     TEXT NOT NULL,
+    old_version  TEXT,
+    new_version  TEXT,
+    project_id   TEXT,
+    status       TEXT NOT NULL DEFAULT 'updated',
+    updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  )
+`).run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_mod_update_log_server ON mod_update_log(server_id, updated_at)").run(); } catch(e){}
+
 module.exports = { db, auditLog, getOrCreateJwtSecret };
 
 // ─── NEUE TABELLEN (Feature-Erweiterung) ──────────────────────────────────────
@@ -259,6 +328,167 @@ db.exec(`
     FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
   );
 
+
+  -- Benachrichtigungs-Einstellungen pro Server
+  CREATE TABLE IF NOT EXISTS notification_settings (
+    id          TEXT PRIMARY KEY,
+    server_id   TEXT NOT NULL UNIQUE,
+    -- Discord
+    discord_webhook  TEXT DEFAULT '',
+    discord_enabled  INTEGER DEFAULT 0,
+    discord_events   TEXT DEFAULT '["crash","disk_warning","backup_done","backup_failed"]',
+    -- E-Mail
+    email_to         TEXT DEFAULT '',
+    email_enabled    INTEGER DEFAULT 0,
+    email_events     TEXT DEFAULT '["crash","disk_warning"]',
+    -- Events-Maske
+    events           TEXT DEFAULT '{}',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+
+  -- SMTP-Globalkonfiguration (Panel-weit, nur Admin)
+  CREATE TABLE IF NOT EXISTS smtp_config (
+    id       INTEGER PRIMARY KEY CHECK (id=1),
+    host     TEXT DEFAULT '',
+    port     INTEGER DEFAULT 587,
+    secure   INTEGER DEFAULT 0,
+    user     TEXT DEFAULT '',
+    password TEXT DEFAULT '',
+    from_addr TEXT DEFAULT '',
+    enabled  INTEGER DEFAULT 0
+  );
+
+
+  -- Stats-Verlauf (alle 30s gesampelt, 7 Tage vorgehalten)
+  CREATE TABLE IF NOT EXISTS server_stats_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id   TEXT NOT NULL,
+    cpu         REAL NOT NULL DEFAULT 0,
+    memory_mb   REAL NOT NULL DEFAULT 0,
+    memory_limit_mb REAL NOT NULL DEFAULT 0,
+    network_rx  INTEGER NOT NULL DEFAULT 0,
+    network_tx  INTEGER NOT NULL DEFAULT 0,
+    pids        INTEGER NOT NULL DEFAULT 0,
+    recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Konsolen-History pro Server pro User
+  CREATE TABLE IF NOT EXISTS console_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id   TEXT NOT NULL,
+    user_id     TEXT NOT NULL,
+    command     TEXT NOT NULL,
+    executed_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+
+  -- Session-Management
+  CREATE TABLE IF NOT EXISTS user_sessions (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    token_hash  TEXT NOT NULL UNIQUE,
+    ip          TEXT DEFAULT '',
+    user_agent  TEXT DEFAULT '',
+    last_seen   TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at  TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- Server-Gruppen / Tags
+  CREATE TABLE IF NOT EXISTS server_groups (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    color      TEXT NOT NULL DEFAULT '#64748b',
+    icon       TEXT NOT NULL DEFAULT '📁',
+    user_id    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS server_group_members (
+    group_id  TEXT NOT NULL,
+    server_id TEXT NOT NULL,
+    PRIMARY KEY (group_id, server_id),
+    FOREIGN KEY (group_id)  REFERENCES server_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (server_id) REFERENCES servers(id)       ON DELETE CASCADE
+  );
+
+  -- Outgoing Webhooks
+  CREATE TABLE IF NOT EXISTS webhooks (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    server_id  TEXT,            -- NULL = panel-wide (admin only)
+    name       TEXT NOT NULL,
+    url        TEXT NOT NULL,
+    secret     TEXT DEFAULT '',
+    events     TEXT NOT NULL DEFAULT '[]',
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    last_fired TEXT,
+    last_status INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id)   REFERENCES users(id)   ON DELETE CASCADE,
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+
+  -- Maintenance-Modus pro Server
+  CREATE TABLE IF NOT EXISTS maintenance_mode (
+    server_id   TEXT PRIMARY KEY,
+    enabled     INTEGER NOT NULL DEFAULT 0,
+    message     TEXT NOT NULL DEFAULT 'Server wird gewartet',
+    started_at  TEXT,
+    started_by  TEXT,
+    FOREIGN KEY (server_id)  REFERENCES servers(id) ON DELETE CASCADE,
+    FOREIGN KEY (started_by) REFERENCES users(id)   ON DELETE SET NULL
+  );
+
+
+  -- Status-Page: Incidents & Ankündigungen
+  CREATE TABLE IF NOT EXISTS status_incidents (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL DEFAULT '',
+    severity    TEXT NOT NULL DEFAULT 'info',  -- info | degraded | partial | major | maintenance
+    status      TEXT NOT NULL DEFAULT 'investigating',  -- investigating | identified | monitoring | resolved
+    server_ids  TEXT NOT NULL DEFAULT '[]',  -- JSON array of affected server IDs
+    started_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT,
+    created_by  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  -- Status-Page: Incident Updates (Timeline)
+  CREATE TABLE IF NOT EXISTS status_incident_updates (
+    id          TEXT PRIMARY KEY,
+    incident_id TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    created_by  TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (incident_id) REFERENCES status_incidents(id) ON DELETE CASCADE
+  );
+
+  -- Status-Page: E-Mail Subscriber
+  CREATE TABLE IF NOT EXISTS status_subscribers (
+    id          TEXT PRIMARY KEY,
+    email       TEXT NOT NULL UNIQUE,
+    token       TEXT NOT NULL UNIQUE,  -- für Unsubscribe-Link
+    confirmed   INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Status-Page: Uptime-Log (täglich, pro Server)
+  CREATE TABLE IF NOT EXISTS status_uptime_log (
+    server_id TEXT NOT NULL,
+    date      TEXT NOT NULL,  -- YYYY-MM-DD
+    up_pct    REAL NOT NULL DEFAULT 100,  -- 0-100
+    PRIMARY KEY (server_id, date),
+    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+  );
+
   -- Server-Egg-Verknüpfung
   CREATE TABLE IF NOT EXISTS server_eggs (
     server_id TEXT NOT NULL,
@@ -267,7 +497,53 @@ db.exec(`
     FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
     FOREIGN KEY (egg_id)    REFERENCES eggs(id)    ON DELETE CASCADE
   );
+
+  -- Backups
+  CREATE TABLE IF NOT EXISTS server_backups (
+    id          TEXT PRIMARY KEY,
+    server_id   TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    note        TEXT NOT NULL DEFAULT '',
+    file_path   TEXT NOT NULL,
+    size_bytes  INTEGER NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'creating', -- creating|ready|failed|restoring
+    created_by  TEXT,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (server_id)  REFERENCES servers(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id)   ON DELETE SET NULL
+  );
+
+  -- Disk-Nutzung (Snapshot alle paar Minuten für Trend-Anzeige)
+  CREATE TABLE IF NOT EXISTS disk_usage_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id  TEXT NOT NULL,
+    bytes_used INTEGER NOT NULL DEFAULT 0,
+    recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
+
+try { db.prepare("ALTER TABLE servers ADD COLUMN status_public INTEGER DEFAULT 1").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN status_override TEXT DEFAULT ''").run(); } catch(e){}
+try { db.prepare("ALTER TABLE status_incidents ADD COLUMN scheduled_at TEXT").run(); } catch(e){}
+try { db.prepare("ALTER TABLE status_incidents ADD COLUMN is_scheduled INTEGER DEFAULT 0").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN response_time_ms INTEGER").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN last_ping_at TEXT").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_subscribers_email ON status_subscribers(email)").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_incidents_status ON status_incidents(status)").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_uptime_server ON status_uptime_log(server_id,date)").run(); } catch(e){}
+try { db.prepare("ALTER TABLE users ADD COLUMN suspend_reason TEXT DEFAULT ''").run(); } catch(e){}
+try { db.prepare("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'dark'").run(); } catch(e){}
+try { db.prepare("CREATE TABLE IF NOT EXISTS compose_imports (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, name TEXT NOT NULL, compose_yaml TEXT NOT NULL, server_ids TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'pending', error TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN group_id TEXT").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN tags TEXT DEFAULT '[]'").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id)").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash)").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_webhooks_server ON webhooks(server_id)").run(); } catch(e){}
+
+// ─── INDIZES ──────────────────────────────────────────────────────────────────
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_stats_server_time ON server_stats_log(server_id, recorded_at)").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_console_server_user ON console_history(server_id, user_id, executed_at)").run(); } catch(e){}
+try { db.prepare("DELETE FROM server_stats_log WHERE recorded_at < datetime('now','-7 days')").run(); } catch(e){}
 
 // ─── BUILT-IN EGGS SEEDEN ─────────────────────────────────────────────────────
 const eggsSeeded = db.prepare("SELECT COUNT(*) as c FROM eggs WHERE is_builtin=1").get().c;

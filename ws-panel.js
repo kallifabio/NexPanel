@@ -13,6 +13,14 @@ const daemonHub = require('./daemon-hub');
 const dockerLocal = require('./docker-local');
 
 const { getOrCreateJwtSecret } = require('./db');
+
+// Lazy-loaded to avoid circular deps
+function getSaveConsoleCommand() {
+  try { return require('./routes/bulk').saveConsoleCommand; } catch { return () => {}; }
+}
+function getPersistStats() {
+  try { return require('./stats-collector').persistStats; } catch { return () => {}; }
+}
 const JWT_SECRET = process.env.JWT_SECRET || getOrCreateJwtSecret();
 
 // userId → Set<ws>
@@ -78,7 +86,10 @@ function attachPanelWS(httpServer) {
                 if (ws.readyState !== WebSocket.OPEN) { clearInterval(iv); return; }
                 try {
                   const stats = await dockerLocal.getStats(srv.container_id);
-                  if (stats) ws.send(J({ type: 'stats', server_id: srv.id, data: stats }));
+                  if (stats) {
+                    ws.send(J({ type: 'stats', server_id: srv.id, data: stats }));
+                    getPersistStats()(srv.id, stats);
+                  }
                 } catch {}
               }, 2000);
               localStatIntervals.set(srv.id, iv);
@@ -139,6 +150,9 @@ function attachPanelWS(httpServer) {
 
           // Echo zur Konsole (damit User sieht was er eingegeben hat)
           ws.send(J({ type: 'console', server_id: serverId, data: `\x1b[33m> ${command}\x1b[0m\n` }));
+
+          // ── In Konsolen-History speichern ──────────────────────────────────
+          getSaveConsoleCommand()(serverId, user.id, command);
 
           try {
             if (srv.node_id && daemonHub.isConnected(srv.node_id)) {

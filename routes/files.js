@@ -9,6 +9,7 @@ const express = require('express');
 const { db, auditLog } = require('../db');
 const { authenticate } = require('./auth');
 const { routeToNode } = require('../node-router');
+const { checkDiskBeforeWrite } = require('../resource-limits');
 
 const router = express.Router({ mergeParams: true });
 
@@ -58,6 +59,16 @@ router.post('/write', authenticate, canAccess, async (req, res) => {
     const { path, content } = req.body;
     if (!path) return res.status(400).json({ error: 'path erforderlich' });
     if (content === undefined) return res.status(400).json({ error: 'content erforderlich' });
+
+    // ── Disk-Limit prüfen ──────────────────────────────────────────────────
+    const diskCheck = await checkDiskBeforeWrite(
+      req.srv.id, req.srv.node_id, req.srv.container_id,
+      req.srv.work_dir, req.srv.disk_limit
+    );
+    if (!diskCheck.allowed) {
+      return res.status(507).json({ error: diskCheck.error, pct: diskCheck.pct });
+    }
+
     const result = await routeToNode(req.srv.node_id, {
       type: 'files.write',
       server_id: req.srv.id,

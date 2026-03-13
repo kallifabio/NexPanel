@@ -111,6 +111,19 @@ async function localFallback(msg) {
       return dockerLocal.filesCompress(container_id, msg.paths, msg.destination);
     }
 
+    // ── DISK USAGE ───────────────────────────────────────────────────────────
+    case 'disk.usage': {
+      return dockerLocal.diskUsage(container_id, msg.work_dir || '/home/container');
+    }
+
+    // ── BACKUPS ───────────────────────────────────────────────────────────────
+    case 'backup.create': {
+      return dockerLocal.createBackup(container_id, msg.work_dir || '/home/container', msg.file_path);
+    }
+    case 'backup.restore': {
+      return dockerLocal.restoreBackup(container_id, msg.work_dir || '/home/container', msg.file_path);
+    }
+
     default:
       throw new Error(`Unbekannte Daemon-Operation: ${type}`);
   }

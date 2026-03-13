@@ -1,7 +1,7 @@
 'use strict';
 require('dotenv').config();
 /**
- * server.js — HostPanel v2.0 (Merged)
+ * server.js — NexPanel v3.0 (Merged)
  * ─────────────────────────────────────────────────────────────────
  * Kombiniert v1 (lokales Docker) + v2 (Multi-Node Daemon-System).
  *
@@ -31,7 +31,7 @@ const path       = require('path');
 // Datenbank zuerst (andere Module brauchen db)
 const { db }     = require('./db');
 const daemonHub  = require('./daemon-hub');
-const { attachPanelWS }  = require('./ws-panel');
+const { attachPanelWS, broadcastAll, getPanelWss }  = require('./ws-panel');
 const { attachDaemonEndpoint } = require('./daemon-hub');
 const bcrypt     = require('bcryptjs');
 
@@ -45,7 +45,26 @@ const allocationsRouter= require('./routes/allocations');
 const { serverPorts } = require('./routes/allocations');
 const scheduleRouter  = require('./routes/schedule');
 const subusersRouter  = require('./routes/subusers');
+const backupsRouter   = require('./routes/backups');
 const { startScheduler } = require('./scheduler');
+const { startSftpServer } = require('./sftp-server');
+const notificationsRouter = require('./routes/notifications');
+const { smtpRouter }      = require('./routes/notifications');
+const statusRouter        = require('./routes/status');
+const bulkRouter          = require('./routes/bulk');
+const { startStatsCollector } = require('./stats-collector');
+const { startUptimeScheduler } = require('./status-uptime');
+const sessionsRouter      = require('./routes/sessions');
+const groupsRouter        = require('./routes/groups');
+const webhooksRouter      = require('./routes/webhooks');
+const maintenanceRouter   = require('./routes/maintenance');
+const composeRouter       = require('./routes/compose');
+const scalingRouter       = require('./routes/scaling');
+const alertsRouter        = require('./routes/alerts');
+const oauthRouter         = require('./routes/oauth');
+const metricsRouter       = require('./routes/metrics');
+const docsRouter          = require('./routes/docs');
+const { startResourceMonitor, setBroadcast } = require('./resource-limits');
 const filesRouter      = require('./routes/files');
 const modsRouter       = require('./routes/mods');
 
@@ -64,7 +83,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const authLimiter = rateLimit({ windowMs: 15 * 60_000, max: 20, message: { error: 'Zu viele Anfragen' } });
 const apiLimiter  = rateLimit({ windowMs: 60_000, max: 200 });
 app.use('/api/auth', authLimiter);
-app.use('/api', apiLimiter);
+app.use('/api', (req, res, next) => req.path.startsWith('/docs') ? next() : apiLimiter(req, res, next));
 
 // ─── ROUTEN ──────────────────────────────────────────────────────────────────
 app.use('/api/auth',             authRouter);
@@ -77,6 +96,25 @@ app.use('/api/servers/:serverId/files', filesRouter);
 app.use('/api/servers/:serverId/ports', serverPorts);
 app.use('/api/servers/:serverId/schedule', scheduleRouter);
 app.use('/api/servers/:serverId/subusers', subusersRouter);
+app.use('/api/servers/:serverId/backups',      backupsRouter);
+app.use('/api/servers/:serverId/notifications', notificationsRouter);
+app.use('/api/admin/smtp',                     smtpRouter);
+app.use('/api/servers',                        maintenanceRouter);  // /:serverId/maintenance + /:serverId/transfer
+app.use('/api/servers',                        bulkRouter);
+app.use('/api/groups',                         groupsRouter);
+app.use('/api/webhooks',                       webhooksRouter);
+app.use('/api',                                sessionsRouter);
+app.use('/api/admin/nodes',                    maintenanceRouter);  // /resources
+app.use('/api/compose',                        composeRouter);
+app.use('/api',                                composeRouter);  // /servers/:id/reinstall
+app.use('/api/admin',                          scalingRouter);  // scaling config + scores + auto-register
+app.use('/api/servers/:id/alerts',             alertsRouter);   // resource alert rules per server
+app.use('/api/auth/oauth',                     oauthRouter);    // OAuth login: GitHub, Discord
+app.use('/api/docs',                           docsRouter);     // Swagger / OpenAPI Dokumentation
+app.use('/api/admin/metrics',                  metricsRouter);  // Prometheus token management
+app.use('/metrics',                            metricsRouter);  // Prometheus scrape endpoint
+app.use('/api/admin/oauth',                    oauthRouter);    // OAuth admin config
+app.use('/',                                   statusRouter);
 // Mod/plugin installer: /api/servers/:serverId/mods/*
 app.use('/api/servers/:serverId/mods', modsRouter);
 
@@ -100,7 +138,6 @@ attachDaemonEndpoint(server, db, bcrypt);
 
 // ─── WebSocket Routing via handleUpgrade ──────────────────────────────────
 // Verhindert Konflikte zwischen /ws und /daemon auf demselben Port
-const { getPanelWss }  = require('./ws-panel');
 const { getDaemonWss } = require('./daemon-hub');
 
 server.on('upgrade', (req, socket, head) => {
@@ -120,12 +157,20 @@ server.on('upgrade', (req, socket, head) => {
 
 // ─── START ───────────────────────────────────────────────────────────────────
 startScheduler();
+startResourceMonitor();
+startStatsCollector();
+try { startUptimeScheduler(); } catch(e) { console.warn('[uptime] Scheduler-Fehler:', e.message); }
+setBroadcast((msg) => broadcastAll(msg));
+// SFTP server (optional — set SFTP_ENABLED=false to disable)
+if (process.env.SFTP_ENABLED !== 'false') {
+  try { startSftpServer(); } catch (e) { console.warn('[sftp] Nicht gestartet:', e.message); }
+}
 server.listen(PORT, () => {
-  const adminEmail = process.env.ADMIN_EMAIL || 'admin@hostpanel.local';
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@nexpanel.local';
   const adminPass  = process.env.ADMIN_PASS  || 'admin123';
   console.log(`
 ╔═══════════════════════════════════════════════════════╗
-║          HostPanel v2.0 — Multi-Node Merged           ║
+║          NexPanel v3.0 — Multi-Node           ║
 ╠═══════════════════════════════════════════════════════╣
 ║  Panel:        http://localhost:${String(PORT).padEnd(25)}║
 ║  Admin:        ${adminEmail.padEnd(39)}║
