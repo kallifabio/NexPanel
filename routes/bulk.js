@@ -8,9 +8,9 @@
  */
 
 const express = require('express');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate } = require('./auth');
-const { routeToNode }  = require('../node-router');
+const { routeToNode }  = require('../src/docker/node-router');
 
 const router = express.Router();
 
@@ -117,7 +117,7 @@ router.get('/:serverId/stats/history', authenticate, async (req, res) => {
   const hours  = Math.min(parseInt(req.query.hours)  || 24,  168); // max 7 Tage
   const points = Math.min(parseInt(req.query.points) || 120, 500);
 
-  const { getStatsHistory } = require('../stats-collector');
+  const { getStatsHistory } = require('../src/core/stats-collector');
   res.json(getStatsHistory(req.params.serverId, hours, points));
 });
 

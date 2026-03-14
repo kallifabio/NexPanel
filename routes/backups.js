@@ -19,10 +19,10 @@ const express  = require('express');
 const path     = require('path');
 const fs       = require('fs');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate } = require('./auth');
-const { routeToNode }  = require('../node-router');
-const { notify }       = require('../notifications');
+const { routeToNode }  = require('../src/docker/node-router');
+const { notify }       = require('../src/core/notifications');
 
 const router = express.Router({ mergeParams: true });
 
@@ -211,6 +211,122 @@ router.post('/:backupId/restore', authenticate, canAccess, async (req, res) => {
 });
 
 
+
+// ─── BACKUP-ZEITPLAN (Auto-Backup) ────────────────────────────────────────────
+
+// GET  /api/servers/:serverId/backups/schedule
+router.get('/schedule', authenticate, canAccess, (req, res) => {
+  let schedule = db.prepare('SELECT * FROM backup_schedules WHERE server_id=?')
+    .get(req.params.serverId);
+
+  if (!schedule) {
+    // Defaults zurückgeben ohne zu speichern
+    schedule = {
+      server_id:     req.params.serverId,
+      enabled:       0,
+      cron:          '0 4 * * *',
+      keep_count:    5,
+      name_template: 'Auto {date} {time}',
+      last_run_at:   null,
+      last_result:   null,
+    };
+  }
+  res.json(schedule);
+});
+
+// PUT  /api/servers/:serverId/backups/schedule
+router.put('/schedule', authenticate, canAccess, (req, res) => {
+  const {
+    enabled = 0, cron = '0 4 * * *',
+    keep_count = 5, name_template = 'Auto {date} {time}',
+  } = req.body;
+
+  // Cron-Format prüfen (5 Felder)
+  if (cron && cron.trim().split(/\s+/).length !== 5) {
+    return res.status(400).json({ error: 'Ungültiges Cron-Format (5 Felder erwartet: min h dom mon dow)' });
+  }
+  if (keep_count < 1 || keep_count > 50) {
+    return res.status(400).json({ error: 'keep_count muss zwischen 1 und 50 liegen' });
+  }
+
+  const exists = db.prepare('SELECT id FROM backup_schedules WHERE server_id=?')
+    .get(req.params.serverId);
+
+  if (exists) {
+    db.prepare(`
+      UPDATE backup_schedules
+      SET enabled=?, cron=?, keep_count=?, name_template=?, updated_at=datetime('now')
+      WHERE server_id=?
+    `).run(enabled ? 1 : 0, cron.trim(), keep_count, name_template, req.params.serverId);
+  } else {
+    const { v4: uuid4 } = require('uuid');
+    db.prepare(`
+      INSERT INTO backup_schedules (id, server_id, enabled, cron, keep_count, name_template)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uuid4(), req.params.serverId, enabled ? 1 : 0, cron.trim(), keep_count, name_template);
+  }
+
+  auditLog(req.user.id, 'BACKUP_SCHEDULE_UPDATE', 'server', req.params.serverId,
+    { enabled: !!enabled, cron }, req.ip);
+
+  res.json(db.prepare('SELECT * FROM backup_schedules WHERE server_id=?').get(req.params.serverId));
+});
+
+// POST /api/servers/:serverId/backups/schedule/run — manuell auslösen
+router.post('/schedule/run', authenticate, canAccess, async (req, res) => {
+  const schedule = db.prepare('SELECT * FROM backup_schedules WHERE server_id=?')
+    .get(req.params.serverId);
+
+  if (!schedule) return res.status(404).json({ error: 'Kein Backup-Zeitplan konfiguriert' });
+
+  const srv = req.srv;
+  if (!srv.container_id) return res.status(400).json({ error: 'Server hat keinen Container' });
+
+  // Sofort auslösen (async)
+  res.json({ success: true, message: 'Auto-Backup wird erstellt…' });
+
+  const { autoBackupTick } = require('../src/mods/auto-backup-scheduler');
+  const { runAutoBackup: _r } = require('../src/mods/auto-backup-scheduler');
+
+  // Direkt den runAutoBackup aus dem Modul aufrufen
+  try {
+    const { autoBackupTick: _t, ...mod } = require('../src/mods/auto-backup-scheduler');
+    // Re-require mit Zugriff auf interne Funktion via Tick
+    // Stattdessen: Backup direkt wie im normalen Flow erstellen
+    const { v4: uuid4 } = require('uuid');
+    const path_ = require('path');
+    const name_tmpl = schedule.name_template || 'Auto {date} {time}';
+    const now = new Date();
+    const date = now.toLocaleDateString('de-DE', { year:'numeric', month:'2-digit', day:'2-digit' }).split('.').reverse().join('-');
+    const time = now.toTimeString().slice(0, 5).replace(':', '-');
+    const backupName = name_tmpl.replace(/\{date\}/g, date).replace(/\{time\}/g, time).replace(/\{server\}/g, srv.name || '');
+    const backupId   = uuid4();
+    const dir        = path_.join(process.env.BACKUP_PATH ? require('path').resolve(process.env.BACKUP_PATH) : path_.join(__dirname, '..', 'backups'), srv.id);
+    require('fs').mkdirSync(dir, { recursive: true });
+    const filePath   = path_.join(dir, `${backupId}.tar.gz`);
+
+    db.prepare("INSERT INTO server_backups (id,server_id,name,note,file_path,status,created_by) VALUES (?,?,?,'Manuell ausgelöst',?,'creating',?)")
+      .run(backupId, srv.id, backupName, filePath, req.user.id);
+
+    setImmediate(async () => {
+      try {
+        await routeToNode(srv.node_id, {
+          type:'backup.create', server_id:srv.id, container_id:srv.container_id,
+          backup_id:backupId, file_path:filePath, image:srv.image||'', work_dir:srv.work_dir||'/home/container',
+        }, 300_000);
+        let sizeBytes = 0;
+        try { sizeBytes = require('fs').statSync(filePath).size; } catch(_){}
+        db.prepare("UPDATE server_backups SET status='ready', size_bytes=? WHERE id=?").run(sizeBytes, backupId);
+        db.prepare("UPDATE backup_schedules SET last_run_at=datetime('now'), last_result=? WHERE server_id=?")
+          .run(`✅ Manuell (${Math.round(sizeBytes/1024/1024*10)/10} MB)`, srv.id);
+        notify(srv.id,'backup_done',`Auto-Backup "${backupName}" erstellt.`,{}).catch(()=>{});
+      } catch(e) {
+        db.prepare("UPDATE server_backups SET status='failed', note=? WHERE id=?").run('Fehler: '+e.message.slice(0,190), backupId);
+        db.prepare("UPDATE backup_schedules SET last_result=? WHERE server_id=?").run('❌ Fehler: '+e.message.slice(0,190), srv.id);
+      }
+    });
+  } catch (e) { console.error('[backup/schedule/run]', e.message); }
+});
 
 module.exports = router;
 module.exports.BACKUP_BASE = BACKUP_BASE;

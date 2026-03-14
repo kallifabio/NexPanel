@@ -20,7 +20,7 @@ const https   = require('https');
 const http    = require('http');
 const crypto  = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate } = require('./auth');
 
 const router = express.Router();

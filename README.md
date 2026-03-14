@@ -4,7 +4,7 @@
 
 **Dein selbst gehostetes Server-Management-Panel der nächsten Generation.**
 
-Verwalte Docker-Container über mehrere Nodes, überwache Ressourcen in Echtzeit, installiere und aktualisiere Mods automatisch, plane Aufgaben und vergib gezielten Zugriff an dein Team — alles in einer modernen Oberfläche.
+Verwalte Docker-Container über mehrere Nodes, überwache Ressourcen in Echtzeit, installiere und aktualisiere Mods automatisch, plane Aufgaben und vergib gezielten Zugriff an dein Team — alles in einer modernen Oberfläche mit Client- und Admin-Bereich.
 
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
 [![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)](https://sqlite.org)
@@ -27,7 +27,13 @@ Verwalte Docker-Container über mehrere Nodes, überwache Ressourcen in Echtzeit
 - [Prometheus & Grafana](#prometheus--grafana)
 - [OAuth / Social Login](#oauth--social-login)
 - [Mod Auto-Update](#mod-auto-update)
+- [Auto-Backup Zeitpläne](#auto-backup-zeitpläne)
+- [Server-Broadcast](#server-broadcast)
+- [Console Aliases](#console-aliases)
+- [Server-Favoriten](#server-favoriten)
+- [Pterodactyl Import](#pterodactyl-import)
 - [Auto-Scaling](#auto-scaling)
+- [Client- & Admin-Bereich](#client---admin-bereich)
 - [API-Dokumentation](#api-dokumentation)
 - [WebSocket-Protokoll](#websocket-protokoll)
 - [Dateistruktur](#dateistruktur)
@@ -47,6 +53,9 @@ Verwalte Docker-Container über mehrere Nodes, überwache Ressourcen in Echtzeit
 - Ressourcen-Monitoring: CPU, RAM, Netzwerk-I/O, Prozesse als Live-Graphen
 - Bulk-Aktionen: mehrere Server gleichzeitig starten/stoppen
 - Konsolen-Verlauf persistent gespeichert
+- **Server-Favoriten**: Server anpinnen und in der Liste priorisieren
+- **Console Aliases**: eigene Shortcuts für häufige Befehle (z.B. `/restart` → `say Restarting...`)
+- **Server-Broadcast**: einen Befehl mit einem Klick an alle laufenden Server senden
 
 ### 🌐 Multi-Node Architektur
 - Lokales Docker + beliebig viele Remote-Nodes über Daemon
@@ -63,6 +72,7 @@ Verwalte Docker-Container über mehrere Nodes, überwache Ressourcen in Echtzeit
 - Server-Backups direkt im Panel erstellen
 - Download, Wiederherstellung und Löschung
 - Speicherverbrauch pro Server einsehen
+- **Auto-Backup Zeitpläne**: Cron-basiert, konfigurierbares Namens-Template, automatische Retention
 
 ### 🧩 Mod / Plugin Installer
 - Modrinth, CurseForge, GitHub Releases, direkte URLs
@@ -109,7 +119,15 @@ Verwalte Docker-Container über mehrere Nodes, überwache Ressourcen in Echtzeit
 - Port-Allokationen (einzeln oder als Range)
 - Maintenance-Modus pro Server + Server-Transfer zwischen Nodes
 - Compose-Import (Docker Compose → NexPanel Server)
+- **Pterodactyl Import**: Eggs + Server aus Pterodactyl PTDL_v1/v2 JSON importieren
 - **API-Dokumentation**: Swagger UI unter `/api/docs` (98 Endpunkte, interaktiv testbar)
+
+### 🎨 UI / UX
+- Modernes Dark-Theme mit Cyan-Akzenten, vollständiges Light-Mode-Theme
+- **Client- & Admin-Bereich** — getrennte Navigation wie bei Pterodactyl
+- Alle Icons als Lucide SVG (einheitlich 16–20 px)
+- Responsive Layout für mobile Geräte
+- Globale Suche (Strg+K)
 
 ---
 
@@ -135,9 +153,9 @@ cd nexpanel
 # 2. Abhängigkeiten installieren
 npm install
 
-# 3. Optional: Konfiguration anlegen
+# 3. Konfiguration anlegen
 cp .env.example .env
-nano .env
+nano .env          # mindestens ADMIN_EMAIL und ADMIN_PASS setzen
 
 # 4. Panel starten
 npm start
@@ -147,17 +165,26 @@ NexPanel ist jetzt erreichbar unter **http://localhost:3000**
 
 **Standard-Login:**
 ```
-E-Mail:   admin@hostpanel.local
+E-Mail:   admin@nexpanel.local
 Passwort: admin123
 ```
 
 > ⚠️ **Wichtig:** Ändere das Admin-Passwort direkt nach dem ersten Login unter Einstellungen → Passwort ändern.
 
+### Daemon separat starten
+
+```bash
+# Wenn der Daemon auf einem anderen Server läuft:
+NODE_ID="..." NODE_TOKEN="hpd_..." PANEL_URL="ws://..." npm run daemon
+# oder direkt:
+node src/daemon/daemon.js
+```
+
 ---
 
 ## Konfiguration
 
-Erstelle eine `.env`-Datei im Projektverzeichnis:
+Erstelle eine `.env`-Datei (Vorlage: `.env.example`):
 
 ```env
 # ── Panel ───────────────────────────────────────────────────────
@@ -165,15 +192,16 @@ PORT=3000
 HOST=0.0.0.0
 
 # ── Datenbank ───────────────────────────────────────────────────
-DB_PATH=./nexpanel.db
+# Wird in data/ gespeichert — Verzeichnis wird automatisch erstellt
+DB_PATH=./data/nexpanel.db
 
 # ── Admin-Konto (nur beim allerersten Start, danach ignoriert) ──
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASS=SicheresPasswort123!
+ADMIN_EMAIL=admin@nexpanel.local
+ADMIN_PASS=admin123
 
 # ── JWT ─────────────────────────────────────────────────────────
-# Wird beim ersten Start automatisch generiert und in der DB gespeichert.
-# Nur setzen wenn du einen festen Secret brauchst (z.B. Zero-Downtime-Reload).
+# Wird beim ersten Start automatisch generiert.
+# Nur setzen wenn du einen festen Secret brauchst.
 JWT_SECRET=
 
 # ── Docker ──────────────────────────────────────────────────────
@@ -182,14 +210,16 @@ DOCKER_SOCKET=/var/run/docker.sock
 # Windows (Docker Desktop):
 # DOCKER_SOCKET=//./pipe/docker_engine
 
-# ── Mod-Installer ───────────────────────────────────────────────
-# CurseForge API Key (kostenlos auf curseforge.com/api)
-CURSEFORGE_API_KEY=
+# ── Backups ─────────────────────────────────────────────────────
+BACKUP_PATH=./backups
 
 # ── SFTP ────────────────────────────────────────────────────────
 SFTP_PORT=2022
-# SSH Host-Key wird beim ersten Start automatisch generiert
-SFTP_HOST_KEY_PATH=./sftp_host_key
+# SSH Host-Key wird beim ersten Start automatisch in data/ generiert
+SFTP_HOST_KEY_PATH=./data/sftp_host_key
+
+# ── Mod-Installer ───────────────────────────────────────────────
+CURSEFORGE_API_KEY=   # optional, kostenlos auf curseforge.com/api
 
 # ── E-Mail (für Benachrichtigungen) ─────────────────────────────
 SMTP_HOST=smtp.example.com
@@ -198,6 +228,12 @@ SMTP_USER=nexpanel@example.com
 SMTP_PASS=
 SMTP_FROM=NexPanel <nexpanel@example.com>
 ```
+
+### Wichtige Hinweise
+
+- `data/` und `backups/` werden beim ersten Start automatisch erstellt.
+- Der SFTP Host-Key wird einmalig in `data/sftp_host_key` generiert — diese Datei nicht löschen, sonst ändern sich die Fingerprints für alle Clients.
+- `DB_PATH` kann absolut oder relativ zum Projektverzeichnis angegeben werden.
 
 ---
 
@@ -214,7 +250,7 @@ Kein Daemon nötig. NexPanel kommuniziert direkt mit Docker auf demselben Host.
 
 ### Modus 2 — Multi-Node mit Daemons
 
-Beliebig viele Remote-Server werden über `daemon.js` angebunden. Die Kommunikation läuft über persistente WebSocket-Verbindungen — am Node-Server ist kein eingehender Port nötig.
+Beliebig viele Remote-Server über `src/daemon/daemon.js`. Kommunikation via persistenter WebSocket-Verbindung — kein eingehender Port am Node nötig.
 
 ```
 [NexPanel :3000]
@@ -225,7 +261,7 @@ Beliebig viele Remote-Server werden über `daemon.js` angebunden. Die Kommunikat
 
 ### Modus 3 — Hybrid
 
-Lokaler Node (kein Daemon) + beliebig viele Remote-Nodes gleichzeitig. Empfohlen für Produktionsumgebungen.
+Lokaler Node + beliebig viele Remote-Nodes gleichzeitig. Empfohlen für Produktionsumgebungen.
 
 ---
 
@@ -233,7 +269,7 @@ Lokaler Node (kein Daemon) + beliebig viele Remote-Nodes gleichzeitig. Empfohlen
 
 ### 1. Node im Panel registrieren
 
-**Admin → Nodes → „Node hinzufügen"**
+**Admin-Bereich → Nodes → „Node hinzufügen"**
 
 - Name, FQDN/IP und Standort eintragen
 - Token einmalig kopieren (wird danach nicht mehr angezeigt)
@@ -248,7 +284,7 @@ npm install ws dockerode
 NODE_ID="<node-id-aus-dem-panel>" \
 NODE_TOKEN="hpd_<token-aus-dem-panel>" \
 PANEL_URL="ws://deine-panel-ip:3000" \
-node daemon.js
+node src/daemon/daemon.js
 ```
 
 ### 3. Als systemd-Service (empfohlen)
@@ -266,7 +302,7 @@ WorkingDirectory=/opt/nexpanel
 Environment=NODE_ID=<node-id>
 Environment=NODE_TOKEN=hpd_<token>
 Environment=PANEL_URL=ws://panel-ip:3000
-ExecStart=/usr/bin/node /opt/nexpanel/daemon.js
+ExecStart=/usr/bin/node /opt/nexpanel/src/daemon/daemon.js
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -279,15 +315,12 @@ WantedBy=multi-user.target
 ```bash
 systemctl daemon-reload
 systemctl enable --now nexpanel-daemon
-
-# Status prüfen
-systemctl status nexpanel-daemon
 journalctl -u nexpanel-daemon -f
 ```
 
 ### Token rotieren
 
-Im Panel unter **Admin → Nodes → ⋮ → Token rotieren**. Der Daemon muss danach mit dem neuen Token neu gestartet werden.
+**Admin-Bereich → Nodes → ⋮ → Token rotieren** — Daemon danach neu starten.
 
 ---
 
@@ -296,30 +329,31 @@ Im Panel unter **Admin → Nodes → ⋮ → Token rotieren**. Der Daemon muss d
 NexPanel stellt einen integrierten SFTP-Server auf Port **2022** bereit. Verbinde dich mit deinen Panel-Zugangsdaten:
 
 ```bash
-sftp -P 2022 deinbenutzername@panel-ip
+# Format: <panel-benutzername>.<server-id-prefix>@<panel-ip>
+sftp -P 2022 admin.a1b2c3@panel-ip
 ```
 
-Navigiere im SFTP-Client mit der Server-UUID als Verzeichnis:
+Der Benutzername besteht aus Panel-Username + `.` + den ersten 6 Zeichen der Server-UUID. Die Server-ID steht in der Panel-URL: `/#server/a1b2c3d4-...`
 
 ```bash
-cd 550e8400-e29b-41d4-a716-446655440000
-ls
-get server.properties
-put plugins/MyPlugin.jar
+# Beispiele im SFTP-Client:
+ls                         # Wurzelverzeichnis des Containers
+get server.properties      # Datei herunterladen
+put plugins/MyPlugin.jar   # Datei hochladen
+mkdir world_backup         # Verzeichnis erstellen
 ```
 
-Die Server-ID steht in der Panel-URL: `https://panel.example.com/#server/<uuid>`
+Kompatibel mit: FileZilla, WinSCP, Cyberduck, `sftp`-CLI, VS Code Remote.
 
-Kompatibel mit: FileZilla, WinSCP, Cyberduck, `sftp`-CLI, VS Code Remote — SSH.
+> Der SSH Host-Key wird beim ersten Start automatisch in `data/sftp_host_key` generiert. Der Pfad kann über `SFTP_HOST_KEY_PATH` angepasst werden.
 
 ---
 
 ## Prometheus & Grafana
 
-### Metriken aktivieren
+### Token generieren
 
-1. **Admin → Prometheus Metrics → Token generieren**
-2. Den Token einmalig kopieren und sicher speichern
+**Admin-Bereich → Prometheus Metrics → Token generieren** — einmalig angezeigt, sicher speichern.
 
 ### Prometheus konfigurieren
 
@@ -335,7 +369,7 @@ scrape_configs:
       credentials: '<dein-token>'
 ```
 
-### Verfügbare Metriken
+### Verfügbare Metriken (16 Stück)
 
 | Metrik | Typ | Beschreibung |
 |---|---|---|
@@ -345,8 +379,8 @@ scrape_configs:
 | `nexpanel_server_memory_limit_mb` | Gauge | RAM-Limit MB |
 | `nexpanel_server_memory_percent` | Gauge | RAM-Auslastung % |
 | `nexpanel_server_disk_limit_mb` | Gauge | Disk-Limit MB |
-| `nexpanel_server_network_rx_bytes` | Counter | Netzwerk empfangen (Bytes) |
-| `nexpanel_server_network_tx_bytes` | Counter | Netzwerk gesendet (Bytes) |
+| `nexpanel_server_network_rx_bytes` | Counter | Netzwerk empfangen |
+| `nexpanel_server_network_tx_bytes` | Counter | Netzwerk gesendet |
 | `nexpanel_server_pids` | Gauge | Prozess-Anzahl |
 | `nexpanel_node_server_count` | Gauge | Server pro Node |
 | `nexpanel_node_running_count` | Gauge | Laufende Server pro Node |
@@ -354,13 +388,13 @@ scrape_configs:
 | `nexpanel_running_servers` | Gauge | Laufende Server gesamt |
 | `nexpanel_total_users` | Gauge | Anzahl Benutzer |
 | `nexpanel_total_nodes` | Gauge | Anzahl Nodes |
-| `nexpanel_info` | Gauge | Panel-Version + Uptime-Sekunden |
+| `nexpanel_info` | Gauge | Panel-Version + Uptime |
 
 ### Grafana Dashboard
 
-Das fertige Dashboard-JSON ist unter **Admin → Prometheus Metrics → Dashboard herunterladen** verfügbar. Es enthält 4 Stat-Panels (Totals), CPU- und RAM-Zeitreihen, Netzwerk RX/TX sowie eine Server-Status-Tabelle mit Farbkodierung.
+Unter **Admin-Bereich → Prometheus Metrics → Dashboard herunterladen** gibt es ein fertiges Dashboard-JSON mit 4 Stat-Panels, CPU/RAM-Zeitreihen, Netzwerk RX/TX und einer farbkodierten Server-Status-Tabelle.
 
-### Prometheus + Grafana per Docker Compose
+### Docker Compose (Prometheus + Grafana)
 
 ```yaml
 version: '3.8'
@@ -387,21 +421,19 @@ volumes:
 
 ## OAuth / Social Login
 
-NexPanel unterstützt Login via **GitHub** und **Discord** ohne zusätzliche npm-Pakete.
-
 ### GitHub einrichten
 
 1. [GitHub Developer Settings](https://github.com/settings/developers) → **New OAuth App**
 2. **Authorization callback URL**: `https://deine-panel-domain/api/auth/oauth/github/callback`
-3. Client ID und Secret in **Admin → OAuth / Social Login** eintragen
+3. Client ID + Secret in **Admin-Bereich → OAuth / Social Login** eintragen
 
 ### Discord einrichten
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application → OAuth2**
 2. **Redirect URI**: `https://deine-panel-domain/api/auth/oauth/discord/callback`
-3. Client ID und Secret in **Admin → OAuth / Social Login** eintragen
+3. Client ID + Secret in **Admin-Bereich → OAuth / Social Login** eintragen
 
-### Account-Matching-Logik
+### Account-Matching
 
 | Situation | Aktion |
 |---|---|
@@ -409,34 +441,149 @@ NexPanel unterstützt Login via **GitHub** und **Discord** ohne zusätzliche npm
 | Gleiche E-Mail wie bestehender Account | Automatische Verknüpfung |
 | Neue E-Mail | Neuen Account anlegen |
 
-Benutzer verwalten ihre verknüpften Konten unter **Einstellungen → Verknüpfte Konten**.
+Verknüpfte Konten verwalten unter **Einstellungen → Verknüpfte Konten**.
 
 ---
 
 ## Mod Auto-Update
 
-NexPanel kann installierte Mods automatisch aktuell halten.
-
 ### Funktionsweise
 
-1. SHA1-Hashes aller JARs im Container werden berechnet (`sha1sum`)
+1. SHA1-Hashes aller JARs im Container werden berechnet
 2. Batch-Lookup gegen die [Modrinth API](https://docs.modrinth.com) (`/v2/version_files`)
-3. Exakte Versions- und Projektzuordnung — keine fehleranfällige Dateinamen-Heuristik
+3. Exakte Versionsidentifikation — keine fehleranfällige Dateinamen-Heuristik
 4. Neuere Versionen werden heruntergeladen, alte Dateien gelöscht
 
-### Konfiguration pro Server
+### Konfiguration
 
 **Server → Mods-Tab → Auto-Update:**
 
 | Einstellung | Optionen |
 |---|---|
 | Auto-Update | Ein / Aus |
-| Prüfintervall | 1 h, 3 h, 6 h, 12 h, 24 h, 48 h, 168 h (1 Woche) |
+| Prüfintervall | 1 h · 3 h · 6 h · 12 h · 24 h · 48 h · 168 h |
 | Bei Update benachrichtigen | Discord / E-Mail |
 
-### Manueller Update-Check
+### Manueller Check
 
-**Server → Mods → „Updates prüfen"** zeigt alle verfügbaren Updates mit alter/neuer Version, Changelog-Vorschau (Markdown) und Dateigröße. Einzeln oder alle auf einmal installierbar.
+**Server → Mods → „Updates prüfen"** — zeigt alle Updates mit Changelog-Vorschau, alter/neuer Version und Dateigröße.
+
+---
+
+## Auto-Backup Zeitpläne
+
+Automatische Backups laufen im Hintergrund ohne manuelle Eingriffe.
+
+### Konfiguration
+
+**Server → Backups-Tab → Automatisches Backup → Konfigurieren:**
+
+| Feld | Beschreibung |
+|---|---|
+| Cron-Ausdruck | Zeitplan (z.B. `0 4 * * *` = täglich 04:00) |
+| Aufbewahrung | Anzahl Backups die behalten werden (1–50) |
+| Name-Template | `{date}` · `{time}` · `{server}` als Platzhalter |
+
+Älteste Backups werden automatisch gelöscht sobald das Limit erreicht ist. Mit **„Jetzt"**-Button kann der Zeitplan auch manuell ausgelöst werden.
+
+### Beispiel-Konfiguration
+
+```
+Cron:       0 3 * * *           (täglich 03:00 Uhr)
+Aufbewahren: 7                   (eine Woche Verlauf)
+Template:   Auto {date} {time}   → z.B. "Auto 2025-01-15 03-00"
+```
+
+---
+
+## Server-Broadcast
+
+Sendet einen Befehl gleichzeitig an mehrere Server — nützlich für Wartungsankündigungen oder Server-weite Aktionen.
+
+### Verwendung
+
+**Client-Bereich → Broadcast:**
+
+1. Befehl eingeben (z.B. `say Wartung in 10 Minuten!`)
+2. Ziel wählen: alle laufenden Server, alle Server, oder manuelle Auswahl
+3. Optional: Verzögerung zwischen Servern (0–2000 ms)
+4. **„Broadcast senden"** klicken
+
+### API
+
+```bash
+curl -X POST http://panel-ip:3000/api/servers/broadcast \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"command":"say Hello","target":"running","delay_ms":500}'
+```
+
+---
+
+## Console Aliases
+
+Eigene Shortcuts für häufig genutzte Befehle — pro Server und pro Benutzer.
+
+### Erstellen
+
+**Server → Console-Tab → Hash-Icon (Aliases) → Neuer Alias:**
+
+| Feld | Beispiel |
+|---|---|
+| Name | `restart` |
+| Befehl | `say Restarting in 10s` |
+
+### Verwenden
+
+In der Console einfach `/aliasname` eingeben statt des vollständigen Befehls:
+
+```
+/restart    →  say Restarting in 10s
+/save       →  save-all
+/players    →  list
+```
+
+Aliases sind benutzerspezifisch — jeder Benutzer hat seine eigenen Shortcuts pro Server.
+
+---
+
+## Server-Favoriten
+
+Server können als Favorit markiert werden, um sie in der Liste zu priorisieren.
+
+Klicke auf das **Stern-Icon** rechts in einem Server-Eintrag. Favorisierte Server werden gelb hervorgehoben. Die Favoriten-Einstellung ist benutzerspezifisch und wird serverseitig persistiert.
+
+---
+
+## Pterodactyl Import
+
+Bestehende Pterodactyl-Infrastruktur kann direkt in NexPanel importiert werden — ohne manuelle Neuerstellung.
+
+### Eggs importieren
+
+**Admin-Bereich → Eggs / Templates → „Pterodactyl Import":**
+
+- **JSON einfügen**: PTDL_v1 oder PTDL_v2 JSON direkt einfügen
+- **Datei hochladen**: `.json`-Datei per Drag & Drop
+- **Bulk**: mehrere Eggs als JSON-Array oder mehrere Dateien gleichzeitig
+
+Unterstützte Formate: `PTDL_v1`, `PTDL_v2`, NexPanel Re-Export.
+
+Die Import-Engine erkennt das Format automatisch und konvertiert:
+- `{{VARIABLE}}` → `${VARIABLE}` (Startup-Command)
+- Laravel Validation Rules → NexPanel ENV-Variablen-Schema
+- `docker_images`-Map → primäres Image + Beschreibungsanhang
+- Kategorie und Icon werden automatisch aus dem Egg-Namen erkannt
+
+### Server importieren
+
+**Admin-Bereich → Ptero Server Import** (oder Sidebar-Link):
+
+JSON aus dem Pterodactyl Application API (`GET /api/application/servers`) einfügen. Unterstützt Einzel-Server und Arrays. Der Ziel-Node und -Benutzer können frei gewählt werden.
+
+### Eggs exportieren
+
+In der Egg-Detailansicht gibt es einen **„Exportieren"**-Button der ein PTDL_v1-kompatibles JSON zum Download erzeugt — kompatibel mit anderen Pterodactyl-Instanzen.
 
 ---
 
@@ -453,45 +600,63 @@ Score = (RAM_frei / RAM_gesamt  × 40)
       + (Server_Anzahl_Faktor   × 10)
 ```
 
-Nodes mit zu wenig freiem RAM oder Disk für den neuen Server werden vorab ausgeschlossen.
+Nodes mit zu wenig Ressourcen für den neuen Server werden ausgeschlossen.
 
 ### Konfiguration
 
-**Admin → Auto-Scaling** — Mindest-Ressourcen-Schwellen und Gewichtungsfaktoren anpassen. Die Scoring-Vorschau zeigt den aktuellen Score aller Nodes in Echtzeit.
+**Admin-Bereich → Auto-Scaling** — Schwellenwerte und Gewichtungsfaktoren anpassen. Die Scoring-Vorschau zeigt den aktuellen Score aller Nodes in Echtzeit.
 
-### Auto-Register (für Cloud-Deployments)
+### Auto-Register für Cloud-Deployments
 
 ```bash
 NODE_AUTO_REGISTER_KEY="<key-aus-dem-panel>" \
 PANEL_URL="https://panel.example.com" \
-node daemon.js --auto-register --name="Node-DE-1" --location="Frankfurt"
+node src/daemon/daemon.js --auto-register --name="Node-DE-1" --location="Frankfurt"
 ```
+
+---
+
+## Client- & Admin-Bereich
+
+NexPanel trennt die Navigation wie Pterodactyl in zwei Bereiche:
+
+### Client-Bereich
+Für alle Benutzer zugänglich:
+- Dashboard, Server-Liste, Server-Gruppen
+- Compose Import, Broadcast
+- Webhooks, Sessions, API Keys, Einstellungen
+
+### Admin-Bereich
+Nur für Admins (automatisch per Klick auf „Admin" im Sidebar-Switcher):
+- Infrastruktur: Nodes, Port Allocations, Node Ressourcen, Auto-Scaling
+- Management: Benutzer, Eggs/Templates, Docker Images, Ptero Import
+- System: Audit Log, OAuth, Prometheus, Status-Page, API Docs
+
+Der Bereich-Switcher sitzt direkt unter dem Brand-Logo. Die gewählte Area wird in `localStorage` gespeichert. Beim direkten Aufruf einer Admin-Seite (z.B. per Deeplink) wechselt das Panel automatisch in den Admin-Bereich.
 
 ---
 
 ## API-Dokumentation
 
-NexPanel enthält eine vollständige interaktive Dokumentation auf Basis von **Swagger UI / OpenAPI 3.0**.
-
 **Erreichbar unter:** `http://panel-ip:3000/api/docs`
 
 **98 dokumentierte Endpunkte** in 16 Kategorien: Auth, OAuth, Servers, Files, Backups, Schedule, Subusers, Notifications, Alerts, Mods, Nodes, Allocations, Groups, Webhooks, Admin, Metrics.
 
-### Token in der Swagger UI setzen
+### Token setzen
 
 1. `/api/docs` öffnen
-2. JWT aus dem Login in das Token-Feld oben einfügen
-3. „Anwenden" klicken — alle „Try it out"-Requests laufen dann authentifiziert
+2. JWT Token in das Feld oben einfügen → „Anwenden"
+3. Alle „Try it out"-Requests laufen automatisch authentifiziert
 
-Der Token wird in `localStorage` gespeichert und beim nächsten Aufruf automatisch wiederhergestellt.
+Token wird in `localStorage` gespeichert und beim nächsten Aufruf wiederhergestellt.
 
-### OpenAPI Spec importieren
+### OpenAPI Spec
 
 ```
 GET /api/docs/openapi.json
 ```
 
-Die JSON-Spec kann direkt in Postman, Insomnia oder OpenAPI-Code-Generatoren importiert werden.
+Importierbar in Postman, Insomnia, oder OpenAPI-Code-Generatoren.
 
 ---
 
@@ -500,46 +665,27 @@ Die JSON-Spec kann direkt in Postman, Insomnia oder OpenAPI-Code-Generatoren imp
 ### Browser → Panel (`/ws`)
 
 ```jsonc
-// Authentifizierung — muss zuerst gesendet werden
-{ "type": "auth", "token": "<jwt>" }
-
-// Live-Stats abonnieren
-{ "type": "subscribe_stats", "server_id": "<uuid>" }
-
-// Konsole abonnieren
+{ "type": "auth",              "token": "<jwt>" }
+{ "type": "subscribe_stats",   "server_id": "<uuid>" }
 { "type": "console.subscribe", "server_id": "<uuid>" }
-
-// Befehl in Konsole senden
-{ "type": "console.input", "server_id": "<uuid>", "data": "say Hallo Welt" }
-
-// Abo beenden
-{ "type": "unsubscribe", "server_id": "<uuid>" }
+{ "type": "console.input",     "server_id": "<uuid>", "data": "say Hallo" }
+{ "type": "unsubscribe",       "server_id": "<uuid>" }
 ```
 
 ### Panel → Browser
 
 ```jsonc
-// Stats-Update (alle ~2 Sekunden)
-{ "type": "stats", "server_id": "<uuid>",
-  "data": { "cpu": 34.5, "memory_mb": 1024, "network_rx": 102400, "pids": 12 } }
-
-// Konsolen-Output
-{ "type": "console.output", "server_id": "<uuid>", "data": "[Server] Done (2.3s)!\n" }
-
-// Status-Änderung
+{ "type": "stats",         "server_id": "<uuid>", "data": { "cpu": 34.5, "memory_mb": 1024 } }
+{ "type": "console.output","server_id": "<uuid>", "data": "[Server] Done!\n" }
 { "type": "server_status", "server_id": "<uuid>", "status": "running" }
-
-// Ressourcen-Alert
-{ "type": "resource_alert", "server_id": "<uuid>",
-  "level": "critical", "metric": "cpu", "value": 96.2 }
+{ "type": "resource_alert","server_id": "<uuid>", "level": "critical", "metric": "cpu" }
 ```
 
 ### Daemon → Panel (`/daemon`)
 
 ```
-WebSocket-Header:
-  x-node-id:    <node-uuid>
-  x-node-token: hpd_<token>
+Header: x-node-id:    <node-uuid>
+Header: x-node-token: hpd_<token>
 ```
 
 ---
@@ -549,55 +695,92 @@ WebSocket-Header:
 ```
 nexpanel/
 │
-├── server.js               ← Express-Server, alle Router-Mounts, Rate-Limiter
-├── daemon.js               ← Remote-Node-Daemon (auf anderen Servern ausführen)
-├── daemon-hub.js           ← WebSocket-Manager für Daemon-Verbindungen
-├── node-router.js          ← Routing: Daemon WS oder lokales Docker
-├── docker-local.js         ← Lokaler Docker-Client (dockerode)
-├── ws-panel.js             ← Browser-WebSocket: Konsole, Stats, Auth
-├── db.js                   ← SQLite-Schema + automatische Migrationen
-├── scheduler.js            ← Hintergrund-Cron-Runner + Mod-Auto-Update-Tick
-├── notifications.js        ← Discord Webhook + E-Mail + ausgehende Webhooks
-├── resource-limits.js      ← Disk-Scan alle 5 min, WS-Warnungen
-├── resource-alerts.js      ← CPU/RAM/Disk Schwellenwert-Engine + Cooldown
-├── stats-collector.js      ← Container-Stats alle 30 s → server_stats_log
-├── status-uptime.js        ← Tägliche Uptime-Snapshots (23:55 Uhr)
-├── scaling.js              ← Node-Scoring-Engine, getBestNode()
-├── mod-auto-updater.js     ← Hintergrund-Mod-Update-Engine (SHA1 → Modrinth)
-├── sftp-server.js          ← SSH2-SFTP-Gateway auf Port 2022
+├── server.js                   ← Express-Server, Router-Mounts, Rate-Limiter
+├── package.json                ← v3.0.0 — scripts: start / dev / daemon
+├── .env.example                ← vollständig dokumentierte Konfigurationsvorlage
+├── .gitignore
+├── README.md
 │
-├── routes/
-│   ├── auth.js             ← Login, Register, JWT, 2FA/TOTP, API-Keys, Sessions
-│   ├── oauth.js            ← Social Login: GitHub + Discord (Popup-Flow)
-│   ├── servers.js          ← Server CRUD, Power-Actions, Logs, Stats, Clone
-│   ├── nodes.js            ← Node-Verwaltung, Token-Rotation, Images
-│   ├── allocations.js      ← Port-Allokationen (einzeln + Range)
-│   ├── eggs.js             ← Server-Templates / Eggs
-│   ├── files.js            ← Datei-Manager (list, read, write, rename, compress)
-│   ├── backups.js          ← Backups erstellen, herunterladen, wiederherstellen
-│   ├── mods.js             ← Mod-Installer + SHA1-Update-Check + Changelog
-│   ├── schedule.js         ← Geplante Aufgaben (Cronjobs)
-│   ├── subusers.js         ← Sub-User + granulare Berechtigungen
-│   ├── notifications.js    ← Discord/E-Mail-Einstellungen pro Server
-│   ├── alerts.js           ← Ressourcen-Alert-Regeln pro Server
-│   ├── groups.js           ← Server-Gruppen und Tags
-│   ├── webhooks.js         ← Ausgehende Webhooks (HMAC-signiert)
-│   ├── sessions.js         ← JWT-Session-Verwaltung + Widerruf
-│   ├── status.js           ← Status-Page + Uptime-History
-│   ├── maintenance.js      ← Maintenance-Modus + Server-Transfer
-│   ├── bulk.js             ← Bulk Power-Actions, Console-History, Stats-History
-│   ├── compose.js          ← Docker Compose Import + Server-Reinstall
-│   ├── scaling.js          ← Auto-Scaling-Konfiguration + Scoring-Preview
-│   ├── metrics.js          ← Prometheus /metrics + Token-Verwaltung
-│   ├── admin.js            ← Benutzer, Audit-Log, Docker-Images, Admin-Stats
-│   └── docs.js             ← Swagger UI + OpenAPI 3.0 Spec (/api/docs)
+├── src/                        ← Backend-Module
+│   ├── core/                   ← Kernel-Module
+│   │   ├── db.js               ← SQLite-Schema, Migrationen, Seed-Daten
+│   │   ├── ws-panel.js         ← Browser-WebSocket: Konsole, Stats, Auth
+│   │   ├── scheduler.js        ← Cron-Runner + Mod-Update-Tick + Backup-Tick
+│   │   ├── notifications.js    ← Discord Webhook + E-Mail + ausgehende Webhooks
+│   │   ├── resource-alerts.js  ← CPU/RAM/Disk Schwellenwert-Engine + Cooldown
+│   │   ├── resource-limits.js  ← Disk-Scan alle 5 min, WS-Warnungen
+│   │   ├── stats-collector.js  ← Container-Stats alle 30 s → server_stats_log
+│   │   ├── status-uptime.js    ← Tägliche Uptime-Snapshots (23:55 Uhr)
+│   │   └── scaling.js          ← Node-Scoring-Engine, getBestNode()
+│   │
+│   ├── docker/                 ← Docker-Abstraktion
+│   │   ├── docker-local.js     ← Lokaler Docker-Client (dockerode)
+│   │   ├── node-router.js      ← Routing: Daemon-WS oder lokales Docker
+│   │   └── daemon-hub.js       ← WebSocket-Manager für Daemon-Verbindungen
+│   │
+│   ├── mods/                   ← Mod- & Backup-Automatisierung
+│   │   ├── mod-auto-updater.js        ← SHA1 → Modrinth → Download
+│   │   └── auto-backup-scheduler.js  ← Cron-basierte Auto-Backups + Retention
+│   │
+│   ├── sftp/
+│   │   └── sftp-server.js      ← SSH2-SFTP-Gateway auf Port 2022
+│   │
+│   └── daemon/
+│       └── daemon.js           ← Eigenständiger Node-Daemon (Remote-Server)
 │
-├── public/
-│   └── index.html          ← Single-Page-App (~6500 Zeilen, Vanilla JS)
+├── routes/                     ← Express-Router (27 Dateien)
+│   ├── auth.js                 ← Login, Register, JWT, 2FA/TOTP, API-Keys
+│   ├── oauth.js                ← GitHub + Discord Social Login
+│   ├── servers.js              ← Server CRUD, Power, Logs, Stats, Clone
+│   ├── nodes.js                ← Node-Verwaltung, Token-Rotation
+│   ├── allocations.js          ← Port-Allokationen
+│   ├── eggs.js                 ← Server-Templates / Eggs
+│   ├── files.js                ← Datei-Manager
+│   ├── backups.js              ← Backups + Auto-Backup-Zeitpläne
+│   ├── mods.js                 ← Mod-Installer + Update-Check + Changelog
+│   ├── schedule.js             ← Geplante Aufgaben (Cronjobs)
+│   ├── subusers.js             ← Sub-User + Berechtigungen
+│   ├── notifications.js        ← Benachrichtigungs-Einstellungen
+│   ├── alerts.js               ← Ressourcen-Alert-Regeln
+│   ├── groups.js               ← Server-Gruppen + Tags
+│   ├── webhooks.js             ← Ausgehende Webhooks (HMAC-signiert)
+│   ├── sessions.js             ← JWT-Session-Verwaltung
+│   ├── status.js               ← Öffentliche Status-Page
+│   ├── maintenance.js          ← Maintenance-Modus + Server-Transfer
+│   ├── bulk.js                 ← Bulk Power-Actions, Console/Stats-History
+│   ├── compose.js              ← Docker Compose Import + Reinstall
+│   ├── scaling.js              ← Auto-Scaling-Config + Scoring-Preview
+│   ├── metrics.js              ← Prometheus /metrics + Token-Verwaltung
+│   ├── admin.js                ← Benutzer, Audit-Log, Docker, Admin-Stats
+│   ├── broadcast.js            ← Server-Broadcast
+│   ├── favorites.js            ← Server-Favoriten + Console-Aliases
+│   ├── pterodactyl.js          ← Pterodactyl Egg/Server-Import + Export
+│   └── docs.js                 ← Swagger UI + OpenAPI 3.0 Spec
 │
-├── package.json
-├── .env.example
-└── README.md
+├── public/                     ← Frontend
+│   ├── index.html              ← App-Shell (218 Zeilen — lädt CSS + JS)
+│   ├── css/
+│   │   ├── variables.css       ← CSS Custom Properties, Dark/Light Theme
+│   │   ├── layout.css          ← Sidebar, Topbar, Auth, Area-Switcher
+│   │   ├── components.css      ← Buttons, Forms, Cards, Modals, Badges
+│   │   ├── pages.css           ← Server, Console, Files, Mods, Backups, Admin
+│   │   └── utils.css           ← Animationen, Keyframes, Responsive Breakpoints
+│   └── js/
+│       ├── core.js             ← State, API-Client, Utilities, Formatierung
+│       ├── auth.js             ← Login, Register, 2FA/TOTP, OAuth
+│       ├── ws.js               ← WebSocket-Verbindung, Status-Polling
+│       ├── nav.js              ← Navigation, Area-Switcher, App-Bootstrap
+│       ├── dashboard.js        ← Dashboard-Seite
+│       ├── servers.js          ← Server-Liste, Erstellen, Klonen, Bulk
+│       ├── server-detail.js    ← Server-Detail, Console, Live-Charts
+│       ├── files.js            ← File Manager
+│       ├── mods.js             ← Mod-Manager + Pterodactyl Import UI
+│       ├── server-tabs.js      ← Backups, Schedule, Subusers, Alerts, SFTP…
+│       ├── admin.js            ← Alle Admin-Seiten
+│       └── account.js         ← Settings, API Keys, Groups, Webhooks, Broadcast
+│
+├── data/                       ← Runtime-Daten (DB, SFTP-Key) — in .gitignore
+└── backups/                    ← Backup-Dateien — in .gitignore
 ```
 
 ---
@@ -618,7 +801,7 @@ nexpanel/
 
 ---
 
-## Cron-Format (Geplante Tasks)
+## Cron-Format (Geplante Tasks & Auto-Backup)
 
 ```
 ┌──────────── Minute      (0–59)
@@ -658,7 +841,7 @@ Verzeichnis:  /data
 Konsole:      RCON (Port 25575, automatisch erkannt)
 ```
 
-> 💡 Das RAM-Limit des Containers sollte `MEMORY` + ~300 MB Overhead betragen, z.B. `MEMORY=1500M` → Container-Limit `1800 MB`.
+> RAM-Limit des Containers = `MEMORY` + ~300 MB, z.B. `MEMORY=1500M` → Container-Limit `1800 MB`.
 
 ---
 
@@ -669,17 +852,16 @@ Konsole:      RCON (Port 25575, automatisch erkannt)
 | Runtime | Node.js 18+ | Server und Daemon |
 | Web-Framework | Express 4 | REST API + Static Serving |
 | Datenbank | SQLite (better-sqlite3) | Synchron, keine externe DB nötig |
-| Authentifizierung | jsonwebtoken | Zustandslose JWT-Sessions |
+| Auth | jsonwebtoken + bcryptjs | JWT-Sessions, Passwort-Hashing |
 | 2FA | speakeasy + qrcode | TOTP-Generierung und QR-Codes |
 | Docker | dockerode | Container-Management |
 | WebSocket | ws | Echtzeit-Konsole und Stats |
 | SFTP | ssh2 | Datei-Gateway auf Port 2022 |
 | Backups | archiver | tar.gz-Komprimierung |
-| Passwort-Hashing | bcryptjs | Sicheres Passwort-Speichern |
 | Rate-Limiting | express-rate-limit | DDoS / Brute-Force-Schutz |
 | Frontend | Vanilla JS SPA | Kein Framework, kein Build-Step |
 | Charts | Chart.js 4 | Ressourcen-Graphen |
-| Icons | Lucide Icons (CDN) | SVG-Icon-System |
+| Icons | Lucide Icons (CDN) | SVG-Icon-System (16–20 px) |
 | API-Docs | Swagger UI 5 + OpenAPI 3.0 | Interaktive Dokumentation |
 | Metrics | Prometheus text format | Monitoring-Integration |
 
@@ -699,18 +881,22 @@ services:
       - ./:/app
       - /var/run/docker.sock:/var/run/docker.sock
       - nexpanel_data:/app/data
+      - nexpanel_backups:/app/backups
     ports:
       - '3000:3000'
-      - '2022:2022'     # SFTP
+      - '2022:2022'
     environment:
       - PORT=3000
       - DB_PATH=/app/data/nexpanel.db
+      - BACKUP_PATH=/app/backups
+      - SFTP_HOST_KEY_PATH=/app/data/sftp_host_key
       - DOCKER_SOCKET=/var/run/docker.sock
     command: ['node', 'server.js']
     restart: unless-stopped
 
 volumes:
   nexpanel_data:
+  nexpanel_backups:
 ```
 
 ```bash
@@ -729,7 +915,7 @@ docker compose logs -f nexpanel
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-**TLS / Reverse-Proxy** — NexPanel sollte nie direkt im Internet exponiert werden. Beispiel-Konfiguration mit nginx:
+**Reverse-Proxy mit TLS** — NexPanel nie direkt im Internet exponieren:
 
 ```nginx
 server {
@@ -757,33 +943,43 @@ server {
 - SFTP-Port 2022 in der Firewall nur für vertrauenswürdige IPs freigeben
 - Prometheus `/metrics` **nie ohne Token** exponieren
 - Docker-Socket-Zugriff ist Root-äquivalent — Panel nur auf vertrauenswürdigen Hosts betreiben
-- `trust proxy` in `server.js` korrekt setzen wenn hinter Load-Balancer
+- `data/` und `backups/` mit restriktiven Dateisystem-Rechten absichern (`chmod 700`)
+- SFTP Host-Key (`data/sftp_host_key`) sichern — Verlust erzwingt Fingerprint-Änderung bei allen Clients
 
 ---
 
 ## FAQ
 
 **Warum werden keine Icons oder Schriften geladen?**
-NexPanel lädt Lucide Icons und Google Fonts von externen CDNs. Ohne Internetverbindung auf dem Client erscheinen Fallback-Symbole. Für Offline-Setups die Assets lokal einbinden.
+NexPanel lädt Lucide Icons und Google Fonts von externen CDNs. Ohne Internetverbindung erscheinen Fallback-Symbole. Für Offline-Setups die Assets lokal in `public/` einbinden und die CDN-Links in `public/index.html` anpassen.
 
 **Kann ich mehrere NexPanel-Instanzen auf einem Server betreiben?**
-Ja — unterschiedliche Ports (`PORT=3001`) und separate `DB_PATH`-Werte genügen.
+Ja — unterschiedliche `PORT`-Werte und separate `DB_PATH`-Pfade genügen.
 
 **Was passiert wenn ein Node offline geht?**
 Alle Server auf dem Node zeigen Status `offline`. Sobald der Daemon reconnected, werden die Status automatisch aktualisiert. Ausstehende Aktionen werden nicht wiederholt.
 
 **Wie sichere ich die Datenbank?**
 ```bash
-# Laufendes Panel — SQLite WAL-Mode erlaubt Hot-Backup
-sqlite3 nexpanel.db ".backup nexpanel_backup_$(date +%Y%m%d_%H%M).db"
+# Hot-Backup bei laufendem Panel (WAL-Mode erlaubt das)
+sqlite3 data/nexpanel.db ".backup data/nexpanel_$(date +%Y%m%d_%H%M).db"
 ```
-Für automatische Backups: täglichen Cron-Job oder `restic` / `rclone` einrichten.
+Für automatisierte Backups: täglichen Cron-Job oder `restic` / `rclone` einrichten.
+
+**Wo werden Auto-Backups gespeichert?**
+Unter `backups/<server-id>/` als `.tar.gz`-Dateien. Der Pfad kann über `BACKUP_PATH` in der `.env` angepasst werden.
+
+**Wo liegt der SFTP Host-Key?**
+Standardmäßig in `data/sftp_host_key`. Pfad über `SFTP_HOST_KEY_PATH` konfigurierbar. Die Datei beim ersten Start automatisch erstellt.
+
+**Was bedeutet der Console Alias `/`-Prefix?**
+In der Server-Console erkennt NexPanel Eingaben die mit `/` beginnen als Alias-Aufruf. `/restart` löst den definierten Alias aus statt den Buchstaben `/restart` an den Server zu senden.
 
 **Unterstützt NexPanel IPv6?**
-Der Express-Server lauscht standardmäßig auf `0.0.0.0` (IPv4). Für IPv6 `HOST=::` in der `.env` setzen.
+Der Express-Server lauscht standardmäßig auf `0.0.0.0`. Für IPv6 `HOST=::` in der `.env` setzen.
 
 **Wie migriere ich von Pterodactyl?**
-Ein Pterodactyl-Import-Tool ist geplant. Aktuell können Server manuell neu erstellt oder über den Compose-Import übernommen werden.
+Eggs können direkt per PTDL_v1/v2 JSON importiert werden (**Admin → Eggs → Pterodactyl Import**). Server können über den Pterodactyl Application API Export migriert werden (**Admin → Ptero Server Import**). Eine vollständige Datenbank-Migration ist nicht notwendig.
 
 **Werden Windows-Container unterstützt?**
 Aktuell nur Linux-Container getestet. Windows-Container (Hyper-V Isolation) sind nicht offiziell unterstützt.
@@ -797,5 +993,5 @@ MIT License
 ---
 
 <div align="center">
-  <sub>NexPanel — gebaut mit Node.js, SQLite und zu viel Koffein</sub>
+  <sub>NexPanel v3.0 — gebaut mit Node.js, SQLite und zu viel Koffein</sub>
 </div>

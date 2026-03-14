@@ -1,7 +1,16 @@
+# Dependencies
 node_modules/
-*.db
-*.db-wal
-*.db-shm
+
+# Runtime data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/sftp_host_key
+backups/*/
+*.log
+
+# Environment
 .env
-backups/
-sftp_host_key
+
+# Build artifacts
+*.zip

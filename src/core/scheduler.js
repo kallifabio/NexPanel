@@ -5,7 +5,8 @@
  */
 
 const { db } = require('./db');
-const { executeTask } = require('./routes/schedule');
+const { executeTask } = require('../../routes/schedule');
+const { autoBackupTick } = require('../mods/auto-backup-scheduler');
 
 let _interval = null;
 
@@ -66,7 +67,7 @@ async function autoUpdateTick() {
 
       console.log(`[mod-autoupdate] Prüfe Server ${row.server_id}...`);
       try {
-        const { checkAndAutoUpdate } = require('./mod-auto-updater');
+        const { checkAndAutoUpdate } = require('../mods/mod-auto-updater');
         await checkAndAutoUpdate(row.server_id);
       } catch (e) {
         console.warn(`[mod-autoupdate] Fehler bei Server ${row.server_id}:`, e.message);
@@ -83,7 +84,11 @@ function startScheduler() {
   const msToNextMinute = (60 - new Date().getSeconds()) * 1000;
   setTimeout(() => {
     tick();
-    _interval = setInterval(() => { tick(); if (new Date().getMinutes() % 10 === 0) autoUpdateTick().catch(()=>{}); }, 60_000);
+    _interval = setInterval(() => {
+    tick();
+    autoBackupTick().catch(() => {});
+    if (new Date().getMinutes() % 10 === 0) autoUpdateTick().catch(()=>{});
+  }, 60_000);
   }, msToNextMinute);
   console.log(`[scheduler] Gestartet — läuft in ${Math.round(msToNextMinute/1000)}s zum ersten Mal`);
   setTimeout(() => autoUpdateTick().catch(()=>{}), 2 * 60 * 1000);

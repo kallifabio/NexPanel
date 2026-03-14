@@ -8,7 +8,7 @@
 
 const daemonHub  = require('./daemon-hub');
 const dockerLocal= require('./docker-local');
-const { db }     = require('./db');
+const { db }     = require('../core/db');
 
 /**
  * Führt eine Operation auf dem richtigen Node aus:

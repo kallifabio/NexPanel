@@ -540,6 +540,36 @@ try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token_hash)").run(); } catch(e){}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_webhooks_server ON webhooks(server_id)").run(); } catch(e){}
 
+
+// ─── MIGRATIONEN: Session 14 (Favoriten, Aliases, Auto-Backup, Broadcast) ─────
+try { db.prepare("ALTER TABLE servers ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0").run(); } catch(e){}
+try { db.prepare(`CREATE TABLE IF NOT EXISTS console_aliases (
+  id         TEXT PRIMARY KEY,
+  server_id  TEXT NOT NULL,
+  user_id    TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  command    TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(server_id, user_id, name),
+  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)   REFERENCES users(id)   ON DELETE CASCADE
+)`).run(); } catch(e){}
+try { db.prepare(`CREATE TABLE IF NOT EXISTS backup_schedules (
+  id            TEXT PRIMARY KEY,
+  server_id     TEXT NOT NULL UNIQUE,
+  enabled       INTEGER NOT NULL DEFAULT 0,
+  cron          TEXT NOT NULL DEFAULT '0 4 * * *',
+  keep_count    INTEGER NOT NULL DEFAULT 5,
+  name_template TEXT NOT NULL DEFAULT 'Auto {date}',
+  last_run_at   TEXT,
+  last_result   TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+)`).run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_console_aliases_srv_user ON console_aliases(server_id, user_id)").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_server_favorite ON servers(user_id, is_favorite)").run(); } catch(e){}
 // ─── INDIZES ──────────────────────────────────────────────────────────────────
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_stats_server_time ON server_stats_log(server_id, recorded_at)").run(); } catch(e){}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_console_server_user ON console_history(server_id, user_id, executed_at)").run(); } catch(e){}

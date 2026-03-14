@@ -9,8 +9,8 @@
 
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
-const { routeToNode }  = require('../node-router');
+const { db, auditLog } = require('../src/core/db');
+const { routeToNode }  = require('../src/docker/node-router');
 const { authenticate, requireAdmin, canAccessServer } = require('./auth');
 
 const router = express.Router();
@@ -40,8 +40,8 @@ router.get('/', authenticate, (req, res) => {
 router.get('/:id', authenticate, canAccessServer, (req, res) => {
   const { targetServer: s } = req;
   const node = s.node_id ? db.prepare('SELECT id,name,fqdn,location,status,is_local FROM nodes WHERE id=?').get(s.node_id) : null;
-  const { authenticate: _a, requireAdmin: _ra, canAccessServer: _c, ...daemonHub } = require('../daemon-hub');
-  const node_connected = node ? (require('../daemon-hub').isConnected(node.id) || node.is_local) : false;
+  const { authenticate: _a, requireAdmin: _ra, canAccessServer: _c, ...daemonHub } = require('../src/docker/daemon-hub');
+  const node_connected = node ? (require('../src/docker/daemon-hub').isConnected(node.id) || node.is_local) : false;
   res.json({ ...s, node, node_connected });
 });
 
@@ -62,7 +62,7 @@ router.post('/', authenticate, async (req, res) => {
     let scalingReason = null;
     if (!targetNodeId) {
       try {
-        const { getBestNode } = require('../scaling');
+        const { getBestNode } = require('../src/core/scaling');
         const best = getBestNode({ mem_mb: memory_limit, disk_mb: disk_limit, cpu_cores: cpu_limit });
         if (best) {
           targetNodeId  = best.node_id;
@@ -254,7 +254,7 @@ router.get('/:id/stats', authenticate, canAccessServer, async (req, res) => {
     // Nur für lokalen Node
     const node = db.prepare('SELECT * FROM nodes WHERE id=?').get(s.node_id);
     if (node?.is_local) {
-      const dockerLocal = require('../docker-local');
+      const dockerLocal = require('../src/docker/docker-local');
       const stats = await dockerLocal.getStats(s.container_id);
       return res.json(stats || { cpu: 0, memory: 0, memory_limit: s.memory_limit * 1024 * 1024, network_rx: 0, network_tx: 0 });
     }

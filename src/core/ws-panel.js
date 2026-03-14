@@ -9,14 +9,14 @@
 const WebSocket = require('ws');
 const jwt       = require('jsonwebtoken');
 const { db }    = require('./db');
-const daemonHub = require('./daemon-hub');
-const dockerLocal = require('./docker-local');
+const daemonHub = require('../docker/daemon-hub');
+const dockerLocal = require('../docker/docker-local');
 
 const { getOrCreateJwtSecret } = require('./db');
 
 // Lazy-loaded to avoid circular deps
 function getSaveConsoleCommand() {
-  try { return require('./routes/bulk').saveConsoleCommand; } catch { return () => {}; }
+  try { return require('../../routes/bulk').saveConsoleCommand; } catch { return () => {}; }
 }
 function getPersistStats() {
   try { return require('./stats-collector').persistStats; } catch { return () => {}; }

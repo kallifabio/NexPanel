@@ -14,10 +14,10 @@ const express  = require('express');
 const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate, requireAdmin } = require('./auth');
-const { getBestNode, getAllNodeCapacities, getScalingConfig, saveScalingConfig } = require('../scaling');
-const { isConnected } = require('../daemon-hub');
+const { getBestNode, getAllNodeCapacities, getScalingConfig, saveScalingConfig } = require('../src/core/scaling');
+const { isConnected } = require('../src/docker/daemon-hub');
 
 const router = express.Router();
 

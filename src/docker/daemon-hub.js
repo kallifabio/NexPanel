@@ -62,7 +62,7 @@ function getConnectionInfo(nodeId) {
 // Wird in server.js dem HTTP-Server angehängt (/daemon)
 let _daemonWss = null;
 function attachDaemonEndpoint(httpServer, db, bcrypt) {
-  const { auditLog } = require('./db');
+  const { auditLog } = require('../core/db');
 
   const daemonWss = new WebSocket.Server({ noServer: true });
   _daemonWss = daemonWss;

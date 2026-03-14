@@ -12,9 +12,9 @@ const express = require('express');
 const net     = require('net');
 const crypto  = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { db } = require('../db');
+const { db } = require('../src/core/db');
 const { authenticate, requireAdmin } = require('./auth');
-const { getUptimeHistory } = require('../status-uptime');
+const { getUptimeHistory } = require('../src/core/status-uptime');
 
 const router = express.Router();
 
@@ -334,7 +334,7 @@ async function notifySubscribers(incTitle, body, severity) {
   const subs = db.prepare("SELECT * FROM status_subscribers WHERE confirmed=1").all();
   if (!subs.length) return;
   try {
-    const { sendEmail } = require('../notifications');
+    const { sendEmail } = require('../src/core/notifications');
     const SEV = { info:'Info', degraded:'Beeinträchtigung', partial:'Teilausfall', major:'Schwerer Ausfall', maintenance:'Wartung' };
     const title_panel = getSetting('status_page_title','NexPanel Status');
     const subject = `[${title_panel}] ${SEV[severity]||severity}: ${incTitle}`;
@@ -397,7 +397,7 @@ router.get('/status', (req, res) => {
       const LBLS = {running:'● Online',offline:'○ Offline',installing:'◌ Installing',error:'✕ Error',starting:'◌ Starting',stopping:'◌ Stopping'};
       const ovr  = srv.status_override;
       const OC   = {degraded:'#f59e0b',maintenance:'#a78bfa',custom:'#60a5fa'};
-      const OL   = {degraded:'⚠ Beeinträchtigt',maintenance:'🔧 Wartung',custom:'ℹ Info'};
+      const OL   = {degraded:'Beeinträchtigt',maintenance:'Wartung',custom:'Info'};
       const col   = ovr ? OC[ovr]||'#64748b' : COLS[srv.status]||'#64748b';
       const label = ovr ? OL[ovr]||ovr : LBLS[srv.status]||'● '+srv.status;
       const hasCpu = settings.show_cpu && srv.cpu !== null;
@@ -446,8 +446,8 @@ router.get('/status', (req, res) => {
 
   function incCard(inc, resolved=false) {
     const SC = {info:'#60a5fa',degraded:'#f59e0b',partial:'#f59e0b',major:'#ff4757',maintenance:'#a78bfa'};
-    const SL = {info:'ℹ Info',degraded:'⚠ Beeinträchtigt',partial:'⚠ Teilausfall',major:'🔴 Schwerer Ausfall',maintenance:'🔧 Wartung'};
-    const SS = {investigating:'🔍 Wird untersucht',identified:'🎯 Ursache gefunden',monitoring:'👁 Wird beobachtet',resolved:'✅ Behoben'};
+    const SL = {info:'Info',degraded:'Beeinträchtigt',partial:'Teilausfall',major:'Schwerer Ausfall',maintenance:'Wartung'};
+    const SS = {investigating:'Wird untersucht',identified:'Ursache gefunden',monitoring:'Wird beobachtet',resolved:'Behoben'};
     const c = SC[inc.severity]||'#64748b';
     const schedHint = inc.is_scheduled && inc.scheduled_at ? `<div style="font-size:11px;color:#a78bfa;margin-top:4px">🗓 Geplant: ${new Date(inc.scheduled_at).toLocaleString('de-DE')}</div>` : '';
     return `<div class="ic" style="border-color:${c}44;${resolved?'opacity:.7':''}">
@@ -638,10 +638,10 @@ router.get('/status', (req, res) => {
   </div>` : ''}
 
   ${scheduledMaint.length?`<div class="stitle">🗓️ Geplante Wartungen</div>${scheduledMaint.map(i=>incCard(i)).join('')}`:''}
-  ${activeIncidents.length?`<div class="stitle">⚠️ Aktuelle Störungen</div>${activeIncidents.map(i=>incCard(i)).join('')}`:''}
+  ${activeIncidents.length?`<div class="stitle">Aktuelle Störungen</div>${activeIncidents.map(i=>incCard(i)).join('')}`:''}
 
   <div class="search-bar">
-    <span style="color:var(--txt3)">🔍</span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--txt3)"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input id="srv-search" placeholder="Server suchen…" oninput="filterServers(this.value)"/>
     <span id="srv-search-count" style="font-size:11px;color:var(--txt3)"></span>
   </div>
@@ -651,7 +651,7 @@ router.get('/status', (req, res) => {
     <div class="srv-list">${srvCards(grp.servers)}${grp.servers.length===0?'<div style="text-align:center;color:var(--txt3);padding:20px;font-size:13px">Keine Server</div>':''}</div>
   `).join('')}
 
-  ${resolvedIncidents.length?`<div class="stitle" style="margin-top:32px">✅ Behobene Vorfälle</div>${resolvedIncidents.map(i=>incCard(i,true)).join('')}`:''}
+  ${resolvedIncidents.length?`<div class="stitle" style="margin-top:32px">Behobene Vorfälle</div>${resolvedIncidents.map(i=>incCard(i,true)).join('')}`:''}
 
   ${settings.allow_subscribe?`
   <div class="subbox" id="subbox">
@@ -769,7 +769,7 @@ es.onmessage = e => {
   document.getElementById('bnsub').textContent=aon?'Es liegen keine bekannten Störungen vor.':(tot-on)+' System'+(tot-on!==1?'e':'')+' aktuell nicht erreichbar';
   servers.forEach(srv => {
     const OC={degraded:'#f59e0b',maintenance:'#a78bfa',custom:'#60a5fa'};
-    const OL={degraded:'⚠ Beeinträchtigt',maintenance:'🔧 Wartung',custom:'ℹ Info'};
+    const OL={degraded:'Beeinträchtigt',maintenance:'Wartung',custom:'Info'};
     const card=document.getElementById('srv-'+srv.id); if(!card) return;
     const ovr=srv.status_override;
     const col=ovr?OC[ovr]||'#64748b':SC[srv.status]||'#64748b';

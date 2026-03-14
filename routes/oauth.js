@@ -26,9 +26,9 @@ const http     = require('http');
 const crypto   = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const jwt      = require('jsonwebtoken');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate, requireAdmin } = require('./auth');
-const { getOrCreateJwtSecret } = require('../db');
+const { getOrCreateJwtSecret } = require('../src/core/db');
 
 const JWT_SECRET  = process.env.JWT_SECRET || getOrCreateJwtSecret();
 const JWT_EXPIRES = '24h';

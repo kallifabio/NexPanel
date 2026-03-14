@@ -8,9 +8,9 @@
 'use strict';
 
 const express = require('express');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate } = require('./auth');
-const { getOrCreateRule, saveRule, checkResourceAlerts } = require('../resource-alerts');
+const { getOrCreateRule, saveRule, checkResourceAlerts } = require('../src/core/resource-alerts');
 
 const router = express.Router({ mergeParams: true });
 

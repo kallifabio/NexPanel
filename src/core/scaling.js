@@ -14,7 +14,7 @@
 'use strict';
 
 const { db }       = require('./db');
-const { isConnected } = require('./daemon-hub');
+const { isConnected } = require('../docker/daemon-hub');
 
 // ─── STANDARD-KONFIGURATION ───────────────────────────────────────────────────
 const DEFAULT_CONFIG = {

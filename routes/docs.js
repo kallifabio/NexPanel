@@ -1146,7 +1146,7 @@ router.get('/', (req, res) => {
     .swagger-ui .opblock .opblock-summary-path,
     .swagger-ui .opblock .opblock-summary-operation-id { color: #f1f5f9 !important; }
     .swagger-ui .opblock .opblock-summary-description { color: #94a3b8 !important; }
-    .swagger-ui .opblock-body { background: #162032 !important; }
+    .swagger-ui .opblock-body { background: #111827 !important; }
     .swagger-ui .opblock-section-header { background: #1e293b !important; }
     .swagger-ui .opblock-section-header h4 { color: #94a3b8 !important; }
 
@@ -1161,7 +1161,9 @@ router.get('/', (req, res) => {
     .swagger-ui label,
     .swagger-ui .parameter__name,
     .swagger-ui .response-col_status,
-    .swagger-ui table thead tr th { color: #cbd5e1 !important; }
+    .swagger-ui table thead tr th { color: #e2e8f0 !important; }
+    .swagger-ui .parameter__type { color: #7dd3fc !important; }
+    .swagger-ui .renderedMarkdown p { color: #94a3b8 !important; }
     .swagger-ui textarea,
     .swagger-ui input[type=text],
     .swagger-ui input[type=email],
@@ -1171,7 +1173,7 @@ router.get('/', (req, res) => {
       border: 1px solid #475569 !important; border-radius: 4px !important;
     }
     .swagger-ui .model-box,
-    .swagger-ui .model       { background: #1e293b !important; color: #94a3b8 !important; }
+    .swagger-ui .model       { background: #1e293b !important; color: #cbd5e1 !important; }
     .swagger-ui .model-title { color: #7dd3fc !important; }
 
     /* Buttons */
@@ -1184,10 +1186,28 @@ router.get('/', (req, res) => {
     .swagger-ui .btn.cancel   { background: transparent !important; color: #94a3b8 !important; border-color: #475569 !important; }
 
     /* Response */
-    .swagger-ui .responses-table .response-col_description { color: #94a3b8 !important; }
+    .swagger-ui .responses-table .response-col_description { color: #cbd5e1 !important; }
+    .swagger-ui .response-col_status { color: #7dd3fc !important; }
     .swagger-ui .highlight-code { background: #1e293b !important; }
     .swagger-ui .microlight { background: #1e293b !important; color: #7dd3fc !important; }
 
+
+    /* ── Additional clarity fixes ── */
+    .swagger-ui .parameter__name { color: #f1f5f9 !important; font-weight: 600 !important; }
+    .swagger-ui .parameter__in   { color: #7dd3fc !important; font-size: 11px !important; }
+    .swagger-ui .response-col_description code { background: #0f172a !important; color: #7dd3fc !important; padding: 2px 6px !important; border-radius: 4px !important; }
+    .swagger-ui .opblock-description-wrapper p { color: #94a3b8 !important; }
+    .swagger-ui .scheme-container .schemes > label { color: #94a3b8 !important; }
+    .swagger-ui section.models { background: #1e293b !important; border: 1px solid #334155 !important; border-radius: 8px !important; }
+    .swagger-ui section.models h4 { color: #f1f5f9 !important; }
+    .swagger-ui .model-toggle:after { color: #7dd3fc !important; }
+    .swagger-ui .prop-type { color: #7dd3fc !important; }
+    .swagger-ui .prop-format { color: #a5b4fc !important; }
+    .swagger-ui table.model tr.property-row td { color: #cbd5e1 !important; border-color: #334155 !important; }
+    .swagger-ui .filter-container input { background: #1e293b !important; color: #f1f5f9 !important; border-color: #475569 !important; }
+    /* Fix white flash on load */
+    #swagger-ui { min-height: 100vh; }
+    .swagger-ui .wrapper { padding: 0 16px !important; }
     /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #0f172a; }
@@ -1245,7 +1265,7 @@ router.get('/', (req, res) => {
 <!-- NexPanel Header -->
 <div id="nexpanel-header">
   <a href="/" class="logo">
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzAwZDRmZiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwMGY1YTAiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJvbHQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMDAwYjE4Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzAwMWEyZSIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPCEtLSBSb3VuZGVkIHNxdWFyZSBiYWNrZ3JvdW5kIC0tPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjE0IiBmaWxsPSJ1cmwoI2JnKSIvPgogIDwhLS0gTGlnaHRuaW5nIGJvbHQgLyB6YXAgc2hhcGUgLS0+CiAgPHBvbHlnb24gcG9pbnRzPSIzOCw2IDIyLDM0IDMxLDM0IDI2LDU4IDQyLDMwIDMzLDMwIiBmaWxsPSJ1cmwoI2JvbHQpIiBvcGFjaXR5PSIwLjkiLz4KICA8IS0tIFNtYWxsIGFjY2VudCBkb3QgLS0+CiAgPGNpcmNsZSBjeD0iNDgiIGN5PSIxOCIgcj0iNCIgZmlsbD0iIzAwMGIxOCIgb3BhY2l0eT0iMC4zNSIvPgo8L3N2Zz4=" width="24" height="24" style="border-radius:6px;flex-shrink:0" alt="NexPanel"/>
+    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCUiIHkxPSIwJSIgeDI9IjEwMCUiIHkyPSIxMDAlIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzAwZDRmZiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwMGY1YTAiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJvbHQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMDAwYjE4Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzAwMWEyZSIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+CiAgPCEtLSBSb3VuZGVkIHNxdWFyZSBiYWNrZ3JvdW5kIC0tPgogIDxyZWN0IHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgcng9IjE0IiBmaWxsPSJ1cmwoI2JnKSIvPgogIDwhLS0gTGlnaHRuaW5nIGJvbHQgLyB6YXAgc2hhcGUgLS0+CiAgPHBvbHlnb24gcG9pbnRzPSIzOCw2IDIyLDM0IDMxLDM0IDI2LDU4IDQyLDMwIDMzLDMwIiBmaWxsPSJ1cmwoI2JvbHQpIiBvcGFjaXR5PSIwLjkiLz4KICA8IS0tIFNtYWxsIGFjY2VudCBkb3QgLS0+CiAgPGNpcmNsZSBjeD0iNDgiIGN5PSIxOCIgcj0iNCIgZmlsbD0iIzAwMGIxOCIgb3BhY2l0eT0iMC4zNSIvPgo8L3N2Zz4=" width="20" height="20" style="border-radius:6px;flex-shrink:0" alt="NexPanel"/>
     Nex<span>Panel</span>
     <span class="badge">API v3.0</span>
   </a>

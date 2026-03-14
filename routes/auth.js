@@ -8,8 +8,8 @@ const bcrypt    = require('bcryptjs');
 const jwt       = require('jsonwebtoken');
 const crypto    = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
-const { getOrCreateJwtSecret } = require('../db');
+const { db, auditLog } = require('../src/core/db');
+const { getOrCreateJwtSecret } = require('../src/core/db');
 
 function getSpeakeasy() {
   try { return require('speakeasy'); }

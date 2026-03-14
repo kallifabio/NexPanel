@@ -6,10 +6,10 @@
  */
 
 const express = require('express');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate } = require('./auth');
-const { routeToNode } = require('../node-router');
-const { checkDiskBeforeWrite } = require('../resource-limits');
+const { routeToNode } = require('../src/docker/node-router');
+const { checkDiskBeforeWrite } = require('../src/core/resource-limits');
 
 const router = express.Router({ mergeParams: true });
 

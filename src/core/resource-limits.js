@@ -11,7 +11,7 @@ const { notify } = require('./notifications');
  */
 
 const { db, auditLog } = require('./db');
-const { routeToNode }  = require('./node-router');
+const { routeToNode }  = require('../docker/node-router');
 
 // Wird von ws-panel.js gesetzt damit wir Nachrichten pushen können
 let _broadcast = null;

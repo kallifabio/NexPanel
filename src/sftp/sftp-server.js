@@ -17,15 +17,20 @@ const { Server: SshServer } = require('ssh2');
 const { utils: { generateKeyPairSync } } = require('ssh2');
 const fs   = require('fs');
 const path = require('path');
-const { db }           = require('./db');
+const { db }           = require('../core/db');
 const bcrypt           = require('bcryptjs');
-const { routeToNode }  = require('./node-router');
+const { routeToNode }  = require('../docker/node-router');
 
 const SFTP_PORT     = parseInt(process.env.SFTP_PORT || '2022');
-const HOST_KEY_PATH = process.env.SFTP_HOST_KEY || path.join(__dirname, 'sftp_host_key');
+// Use SFTP_HOST_KEY_PATH env var (matches .env.example), default to ./data/sftp_host_key
+const HOST_KEY_PATH = process.env.SFTP_HOST_KEY_PATH
+  || path.join(process.cwd(), 'data', 'sftp_host_key');
 
 // ─── HOST KEY ─────────────────────────────────────────────────────────────────
 function ensureHostKey() {
+  // Ensure data/ directory exists
+  fs.mkdirSync(path.dirname(HOST_KEY_PATH), { recursive: true });
+
   if (!fs.existsSync(HOST_KEY_PATH)) {
     console.log('[sftp] Generiere Host-Key...');
     try {
@@ -33,9 +38,13 @@ function ensureHostKey() {
       fs.writeFileSync(HOST_KEY_PATH, priv, { mode: 0o600 });
       console.log('[sftp] Host-Key gespeichert:', HOST_KEY_PATH);
     } catch (e) {
-      // Fallback: RSA
+      // Fallback: ssh-keygen
       const { execSync } = require('child_process');
-      execSync(`ssh-keygen -t ed25519 -N "" -f "${HOST_KEY_PATH}" 2>/dev/null || ssh-keygen -t rsa -b 2048 -N "" -f "${HOST_KEY_PATH}" 2>/dev/null`);
+      try {
+        execSync(`ssh-keygen -t ed25519 -N "" -f "${HOST_KEY_PATH}" 2>/dev/null`);
+      } catch {
+        execSync(`ssh-keygen -t rsa -b 2048 -N "" -f "${HOST_KEY_PATH}" 2>/dev/null`);
+      }
     }
   }
   return fs.readFileSync(HOST_KEY_PATH);

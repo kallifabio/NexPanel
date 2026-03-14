@@ -9,10 +9,10 @@ const express = require('express');
 const bcrypt  = require('bcryptjs');
 const crypto  = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog }   = require('../db');
+const { db, auditLog }   = require('../src/core/db');
 const { authenticate, requireAdmin } = require('./auth');
-const { isConnected }    = require('../daemon-hub');
-const { routeToNode }    = require('../node-router');
+const { isConnected }    = require('../src/docker/daemon-hub');
+const { routeToNode }    = require('../src/docker/node-router');
 
 const router = express.Router();
 
@@ -94,7 +94,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const count = db.prepare('SELECT COUNT(*) as c FROM servers WHERE node_id=?').get(req.params.id).c;
   if (count > 0) return res.status(409).json({ error: `Node hat noch ${count} Server. Erst alle Server dieses Nodes löschen.` });
 
-  const { daemonSend } = require('../daemon-hub');
+  const { daemonSend } = require('../src/docker/daemon-hub');
   daemonSend(req.params.id, { type: 'shutdown' });
 
   db.prepare('DELETE FROM nodes WHERE id=?').run(req.params.id);
@@ -115,7 +115,7 @@ router.post('/:id/rotate-token', authenticate, requireAdmin, async (req, res) =>
 
     db.prepare('UPDATE nodes SET token_hash=?,token_prefix=? WHERE id=?').run(hash, prefix, node.id);
     // Bestehende Daemon-Verbindung trennen (muss neu verbinden)
-    const conn = require('../daemon-hub').connections.get(node.id);
+    const conn = require('../src/docker/daemon-hub').connections.get(node.id);
     if (conn) { try { conn.ws.close(); } catch {} }
 
     res.json({

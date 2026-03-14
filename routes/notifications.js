@@ -11,9 +11,9 @@
 
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate, requireAdmin } = require('./auth');
-const { sendTestNotification, resetTransporter } = require('../notifications');
+const { sendTestNotification, resetTransporter } = require('../src/core/notifications');
 
 const router = express.Router({ mergeParams: true });
 

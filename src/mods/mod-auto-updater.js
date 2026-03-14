@@ -6,7 +6,7 @@
  */
 'use strict';
 
-const { db, auditLog } = require('./db');
+const { db, auditLog } = require('../core/db');
 const { v4: uuidv4 }   = require('uuid');
 
 async function checkAndAutoUpdate(serverId) {
@@ -15,7 +15,7 @@ async function checkAndAutoUpdate(serverId) {
 
   // Simuliere einen internen HTTP-Call zum eigenen /mods/check-updates Endpunkt
   // Stattdessen nutzen wir direkt die Logik aus routes/mods.js
-  const modsRouter = require('./routes/mods');
+  const modsRouter = require('../../routes/mods');
 
   // Wir bauen einen Mini-Request/Response
   let checkResult = null;
@@ -39,7 +39,7 @@ async function checkAndAutoUpdate(serverId) {
   try {
     const https   = require('https');
     const http    = require('http');
-    const { routeToNode } = require('./node-router');
+    const { routeToNode } = require('../docker/node-router');
 
     const MODRINTH_UA = 'NexPanel/3.0 (github.com/nexpanel)';
 

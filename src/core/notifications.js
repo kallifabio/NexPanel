@@ -171,7 +171,7 @@ async function notify(serverId, event, message, extra = {}) {
 
     // Outgoing Webhooks — immer triggern (unabhängig von notification_settings)
     try {
-      const { dispatchWebhookEvent } = require('./routes/webhooks');
+      const { dispatchWebhookEvent } = require('../../routes/webhooks');
       dispatchWebhookEvent(event, serverId, { server_name: name, message, ...extra })
         .catch(e => console.warn('[notify] Webhook Fehler:', e.message));
     } catch {}

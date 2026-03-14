@@ -6,7 +6,7 @@
 
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate, requireAdmin } = require('./auth');
 
 const router = express.Router();
@@ -127,8 +127,8 @@ module.exports = router;
 // PUT /api/servers/:id/ports/:allocId/notes → Notiz aktualisieren
 
 const serverPorts = express.Router({ mergeParams: true });
-const dockerLocal = require('../docker-local');
-const { routeToNode } = require('../node-router');
+const dockerLocal = require('../src/docker/docker-local');
+const { routeToNode } = require('../src/docker/node-router');
 
 // Helper: Container-Ports nach Zuweisung synchronisieren
 async function syncContainerPorts(srv) {

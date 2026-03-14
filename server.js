@@ -1,5 +1,9 @@
 'use strict';
 require('dotenv').config();
+
+// Ensure runtime directories exist
+require('fs').mkdirSync('./data',    { recursive: true });
+require('fs').mkdirSync('./backups', { recursive: true });
 /**
  * server.js — NexPanel v3.0 (Merged)
  * ─────────────────────────────────────────────────────────────────
@@ -29,10 +33,10 @@ const path       = require('path');
 
 // ─── MODULE ──────────────────────────────────────────────────────────────────
 // Datenbank zuerst (andere Module brauchen db)
-const { db }     = require('./db');
-const daemonHub  = require('./daemon-hub');
-const { attachPanelWS, broadcastAll, getPanelWss }  = require('./ws-panel');
-const { attachDaemonEndpoint } = require('./daemon-hub');
+const { db }     = require('./src/core/db');
+const daemonHub  = require('./src/docker/daemon-hub');
+const { attachPanelWS, broadcastAll, getPanelWss }  = require('./src/core/ws-panel');
+const { attachDaemonEndpoint } = require('./src/docker/daemon-hub');
 const bcrypt     = require('bcryptjs');
 
 // Routes
@@ -46,14 +50,14 @@ const { serverPorts } = require('./routes/allocations');
 const scheduleRouter  = require('./routes/schedule');
 const subusersRouter  = require('./routes/subusers');
 const backupsRouter   = require('./routes/backups');
-const { startScheduler } = require('./scheduler');
-const { startSftpServer } = require('./sftp-server');
+const { startScheduler } = require('./src/core/scheduler');
+const { startSftpServer } = require('./src/sftp/sftp-server');
 const notificationsRouter = require('./routes/notifications');
 const { smtpRouter }      = require('./routes/notifications');
 const statusRouter        = require('./routes/status');
 const bulkRouter          = require('./routes/bulk');
-const { startStatsCollector } = require('./stats-collector');
-const { startUptimeScheduler } = require('./status-uptime');
+const { startStatsCollector } = require('./src/core/stats-collector');
+const { startUptimeScheduler } = require('./src/core/status-uptime');
 const sessionsRouter      = require('./routes/sessions');
 const groupsRouter        = require('./routes/groups');
 const webhooksRouter      = require('./routes/webhooks');
@@ -64,7 +68,10 @@ const alertsRouter        = require('./routes/alerts');
 const oauthRouter         = require('./routes/oauth');
 const metricsRouter       = require('./routes/metrics');
 const docsRouter          = require('./routes/docs');
-const { startResourceMonitor, setBroadcast } = require('./resource-limits');
+const pterodactylRouter   = require('./routes/pterodactyl');
+const favoritesRouter     = require('./routes/favorites');
+const broadcastRouter     = require('./routes/broadcast');
+const { startResourceMonitor, setBroadcast } = require('./src/core/resource-limits');
 const filesRouter      = require('./routes/files');
 const modsRouter       = require('./routes/mods');
 
@@ -111,6 +118,9 @@ app.use('/api/admin',                          scalingRouter);  // scaling confi
 app.use('/api/servers/:id/alerts',             alertsRouter);   // resource alert rules per server
 app.use('/api/auth/oauth',                     oauthRouter);    // OAuth login: GitHub, Discord
 app.use('/api/docs',                           docsRouter);     // Swagger / OpenAPI Dokumentation
+app.use('/api/ptero',                          pterodactylRouter); // Pterodactyl Import Engine
+app.use('/api/servers',                        favoritesRouter);   // Favoriten + Console Aliases
+app.use('/api/servers',                        broadcastRouter);   // Server Broadcast
 app.use('/api/admin/metrics',                  metricsRouter);  // Prometheus token management
 app.use('/metrics',                            metricsRouter);  // Prometheus scrape endpoint
 app.use('/api/admin/oauth',                    oauthRouter);    // OAuth admin config
@@ -138,7 +148,7 @@ attachDaemonEndpoint(server, db, bcrypt);
 
 // ─── WebSocket Routing via handleUpgrade ──────────────────────────────────
 // Verhindert Konflikte zwischen /ws und /daemon auf demselben Port
-const { getDaemonWss } = require('./daemon-hub');
+const { getDaemonWss } = require('./src/docker/daemon-hub');
 
 server.on('upgrade', (req, socket, head) => {
   const url = req.url?.split('?')[0];

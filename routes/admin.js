@@ -9,12 +9,12 @@ const express = require('express');
 const bcrypt  = require('bcryptjs');
 const crypto  = require('crypto');
 const { v4: uuidv4 } = require('uuid');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 // server_subusers table used in audit check above
 const { authenticate, requireAdmin } = require('./auth');
-const { isConnected }  = require('../daemon-hub');
-const dockerLocal      = require('../docker-local');
-const { routeToNode }  = require('../node-router');
+const { isConnected }  = require('../src/docker/daemon-hub');
+const dockerLocal      = require('../src/docker/docker-local');
+const { routeToNode }  = require('../src/docker/node-router');
 
 const router = express.Router();
 

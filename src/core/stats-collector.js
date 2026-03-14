@@ -12,7 +12,7 @@
  */
 
 const { db }        = require('./db');
-const dockerLocal   = require('./docker-local');
+const dockerLocal   = require('../docker/docker-local');
 let _checkAlerts = null;  // lazy to avoid circular dep
 
 const SAMPLE_INTERVAL_MS = 30_000;  // alle 30s

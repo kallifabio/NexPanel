@@ -14,9 +14,9 @@
 const express = require('express');
 const https   = require('https');
 const http    = require('http');
-const { db, auditLog } = require('../db');
+const { db, auditLog } = require('../src/core/db');
 const { authenticate } = require('./auth');
-const { routeToNode }  = require('../node-router');
+const { routeToNode }  = require('../src/docker/node-router');
 
 const router = express.Router({ mergeParams: true });
 
