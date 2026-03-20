@@ -1319,17 +1319,58 @@ function switchArea(area, silent = false) {
 // FAVORITES
 // ═══════════════════════════════════════════════════════════════
 async function toggleFavorite(serverId, btn) {
+  // Optimistic update immediately
+  const curFav = btn.classList.contains('fav-active');
+  const newFav = !curFav;
+
+  // Update btn visually right away
+  _applyFavBtn(btn, newFav);
+
+  // Update localStorage cache immediately
+  if (newFav) addFavCache(serverId); else removeFavCache(serverId);
+
+  // Update State._allServers if available
+  if (State._allServers) {
+    const srv = State._allServers.find(s => s.id === serverId);
+    if (srv) srv.is_favorite = newFav;
+    renderServerList();
+  }
+
   try {
     const res = await API.patch(`/servers/${serverId}/favorite`);
-    const fav = res.is_favorite;
-    btn.classList.toggle('fav-active', fav);
-    btn.title = fav ? 'Favorit entfernen' : 'Als Favorit markieren';
-    btn.style.color = fav ? '#facc15' : 'var(--text3)';
-    // Re-render icon fill
-    const svg = btn.querySelector('svg');
-    if (svg) { svg.style.fill = fav ? '#facc15' : 'none'; svg.style.stroke = fav ? '#facc15' : 'currentColor'; }
-    toast(fav ? 'Favorit gesetzt' : 'Favorit entfernt', 'success');
-  } catch(e) { toast(e.message, 'error'); }
+    const confirmed = res.is_favorite;
+    // Sync if server returned different value
+    if (confirmed !== newFav) {
+      _applyFavBtn(btn, confirmed);
+      if (confirmed) addFavCache(serverId); else removeFavCache(serverId);
+      if (State._allServers) {
+        const srv = State._allServers.find(s => s.id === serverId);
+        if (srv) srv.is_favorite = confirmed;
+        renderServerList();
+      }
+    }
+    toast(confirmed ? '<i data-lucide="star" style="width:13px;height:13px;fill:#facc15;stroke:#facc15;vertical-align:-2px"></i> Favorit gesetzt' : 'Favorit entfernt', 'success');
+  } catch(e) {
+    // Rollback on error
+    _applyFavBtn(btn, curFav);
+    if (curFav) addFavCache(serverId); else removeFavCache(serverId);
+    if (State._allServers) {
+      const srv = State._allServers.find(s => s.id === serverId);
+      if (srv) srv.is_favorite = curFav;
+      renderServerList();
+    }
+    toast(e.message, 'error');
+  }
+}
+
+function _applyFavBtn(btn, active) {
+  btn.classList.toggle('fav-active', active);
+  btn.title = active ? 'Favorit entfernen' : 'Als Favorit markieren';
+  const svg = btn.querySelector('svg');
+  if (svg) {
+    svg.setAttribute('fill',   active ? '#facc15' : 'none');
+    svg.setAttribute('stroke', active ? '#facc15' : 'var(--text3)');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1522,29 +1563,181 @@ async function runBackupScheduleNow(serverId) {
 // BROADCAST PAGE
 // ═══════════════════════════════════════════════════════════════
 async function loadBroadcasts() {
-  document.getElementById('page-actions').innerHTML = '';
-  const [servers, history] = await Promise.all([
+  document.getElementById('page-actions').innerHTML =
+    `<button class="btn btn-primary" onclick="showCreateSchedule()">
+       <i data-lucide="calendar-plus"></i> Zeitplan erstellen
+     </button>`;
+
+  const [servers, history, schedules] = await Promise.all([
     API.get('/servers').catch(() => []),
     API.get('/servers/broadcast/history').catch(() => []),
+    API.get('/servers/announce/schedules').catch(() => []),
   ]);
-
   const running = servers.filter(s => s.status === 'running');
 
   document.getElementById('page-content').innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start">
-      <!-- Send Panel -->
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="card">
-          <div class="card-header" style="margin-bottom:16px">
-            <div class="card-title"><i data-lucide="megaphone"></i> Befehl senden</div>
+    <!-- Tabs -->
+    <div class="tabs" style="margin-bottom:16px" id="bc-tabs">
+      <button class="tab active" onclick="bcTab('announce',this)">
+        <i data-lucide="megaphone"></i> Ankündigung
+      </button>
+      <button class="tab" onclick="bcTab('schedules',this)">
+        <i data-lucide="calendar-clock"></i> Zeitpläne
+        ${schedules.filter(s=>s.enabled).length
+          ? `<span style="margin-left:4px;font-size:10px;background:rgba(0,212,255,.2);color:var(--accent);padding:1px 6px;border-radius:8px">${schedules.filter(s=>s.enabled).length}</span>`
+          : ''}
+      </button>
+      <button class="tab" onclick="bcTab('raw',this)">
+        <i data-lucide="terminal"></i> Raw-Befehl
+      </button>
+      <button class="tab" onclick="bcTab('history',this)">
+        <i data-lucide="history"></i> Verlauf
+        ${history.length ? `<span style="margin-left:4px;font-size:10px;background:var(--bg3);color:var(--text3);padding:1px 6px;border-radius:8px">${history.length}</span>` : ''}
+      </button>
+    </div>
+
+    <!-- ANNOUNCE TAB -->
+    <div id="bc-panel-announce">
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:14px">
+
+          <!-- Nachricht -->
+          <div class="card">
+            <div class="card-title" style="margin-bottom:14px"><i data-lucide="megaphone"></i> Ankündigung senden</div>
+
+            <div class="form-group">
+              <label class="form-label" style="display:flex;justify-content:space-between">
+                <span>Nachricht</span>
+                <span id="ann-char-count" style="color:var(--text3);font-size:11px">0 Zeichen</span>
+              </label>
+              <textarea id="ann-msg" class="form-input" rows="3"
+                placeholder="Wartung in 10 Minuten! Server wird neu gestartet."
+                oninput="document.getElementById('ann-char-count').textContent=this.value.length+' Zeichen';annUpdatePreview()"
+                style="resize:vertical"></textarea>
+            </div>
+
+            <!-- Live-Vorschau -->
+            <div id="ann-preview" style="background:var(--bg3);border-radius:8px;padding:10px 14px;font-family:var(--mono);font-size:12px;color:var(--accent3);margin-bottom:14px;display:none">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Vorschau (Konsole)</div>
+              <span id="ann-preview-text"></span>
+            </div>
+
+            <div class="grid grid-2" style="gap:12px;margin-bottom:14px">
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Konsolen-Befehl Template</label>
+                <input id="ann-cmd" class="form-input" value="say {message}"
+                  placeholder="say {message}" oninput="annUpdatePreview()"/>
+                <div style="font-size:11px;color:var(--text3);margin-top:3px">
+                  <code>{message}</code> wird durch deine Nachricht ersetzt
+                </div>
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Verzögerung zwischen Servern</label>
+                <select id="ann-delay" class="form-input">
+                  <option value="0">Kein Delay</option>
+                  <option value="200">200 ms</option>
+                  <option value="500">500 ms</option>
+                  <option value="1000">1 Sek.</option>
+                  <option value="2000">2 Sek.</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Ziel -->
+            <div class="form-group">
+              <label class="form-label">Ziel</label>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <input type="radio" name="ann-target" value="running" checked/>
+                  <span style="font-size:13px">Alle laufenden Server
+                    <strong style="color:var(--accent)">(${running.length})</strong>
+                  </span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                  <input type="radio" name="ann-target" value="all"/>
+                  <span style="font-size:13px">Alle Server (${servers.length})</span>
+                </label>
+              </div>
+            </div>
           </div>
 
+          <!-- Discord -->
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+              <label class="toggle-wrap">
+                <input type="checkbox" id="ann-discord-enabled" class="toggle-cb"
+                  onchange="document.getElementById('ann-discord-row').classList.toggle('hidden', !this.checked)"/>
+                <div class="toggle-track"><div class="toggle-thumb"></div></div>
+              </label>
+              <div>
+                <div style="font-weight:600;font-size:13px"><i data-lucide="message-square"></i> Discord-Webhook</div>
+                <div style="font-size:11px;color:var(--text3)">Nachricht auch als Discord Embed senden</div>
+              </div>
+            </div>
+            <div id="ann-discord-row" class="hidden">
+              <div class="form-group" style="margin-bottom:8px">
+                <label class="form-label">Webhook-URL</label>
+                <input id="ann-discord-url" class="form-input" type="url"
+                  placeholder="https://discord.com/api/webhooks/…"/>
+              </div>
+              <div class="info-msg" style="font-size:11px">
+                <i data-lucide="info"></i>
+                Discord → Server-Einstellungen → Integrationen → Webhook erstellen → URL kopieren
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary btn-block" id="ann-send-btn" onclick="doAnnounce()">
+            <i data-lucide="send"></i> Ankündigung senden
+          </button>
+          <div id="ann-result" class="hidden" style="margin-top:0"></div>
+        </div>
+
+        <!-- Letzte Ankündigungen -->
+        <div class="card" style="position:sticky;top:16px">
+          <div class="card-header" style="margin-bottom:12px">
+            <div class="card-title"><i data-lucide="history"></i> Letzte Ankündigungen</div>
+          </div>
+          ${history.filter(h=>h.type==='announce'||h.type==='announce_schedule').length === 0
+            ? '<div class="empty" style="padding:24px"><p>Noch keine Ankündigungen</p></div>'
+            : `<div style="display:flex;flex-direction:column;gap:6px;max-height:520px;overflow-y:auto">
+                ${history.filter(h=>h.type==='announce'||h.type==='announce_schedule').slice(0,20).map(h => bcHistoryCard(h)).join('')}
+              </div>`}
+        </div>
+      </div>
+    </div>
+
+    <!-- SCHEDULES TAB -->
+    <div id="bc-panel-schedules" class="hidden">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${schedules.length === 0
+          ? `<div class="card">
+               <div class="empty" style="padding:40px">
+                 <div class="empty-icon"><i data-lucide="calendar-clock"></i></div>
+                 <h3>Keine Zeitpläne</h3>
+                 <p>Erstelle einen Zeitplan für regelmäßige Ankündigungen</p>
+                 <button class="btn btn-primary" style="margin-top:14px" onclick="showCreateSchedule()">
+                   <i data-lucide="plus"></i> Zeitplan erstellen
+                 </button>
+               </div>
+             </div>`
+          : schedules.map(s => bcScheduleCard(s)).join('')}
+      </div>
+    </div>
+
+    <!-- RAW BROADCAST TAB -->
+    <div id="bc-panel-raw" class="hidden">
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
+        <div class="card">
+          <div class="card-title" style="margin-bottom:14px"><i data-lucide="terminal"></i> Raw-Befehl senden</div>
+          <div class="info-msg" style="margin-bottom:14px;font-size:12px">
+            Sendet einen beliebigen Befehl direkt an die Server-Konsole — ohne Formatierung oder Discord.
+          </div>
           <div class="form-group">
             <label class="form-label">Befehl</label>
-            <input id="bc-cmd" class="form-input" placeholder="say Wartung in 10 Minuten!"
+            <input id="bc-cmd" class="form-input" placeholder="say Hallo Welt"
               onkeydown="if(event.key==='Enter')doBroadcast()"/>
           </div>
-
           <div class="form-group">
             <label class="form-label">Ziel</label>
             <div style="display:flex;flex-direction:column;gap:6px">
@@ -1562,13 +1755,11 @@ async function loadBroadcasts() {
               </label>
             </div>
           </div>
-
-          <!-- Server selection (shown when "select" chosen) -->
           <div id="bc-server-select" class="hidden" style="margin-bottom:14px">
-            <label class="form-label" style="margin-bottom:6px">Server wählen</label>
-            <div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:4px">
+            <div style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:6px;display:flex;flex-direction:column;gap:3px">
               ${servers.map(s => `
-                <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:.1s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+                <label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer"
+                  onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
                   <input type="checkbox" class="bc-srv-cb" value="${s.id}" style="accent-color:var(--accent)"/>
                   <span class="server-status-dot ${s.status}" style="width:8px;height:8px;flex-shrink:0"></span>
                   <span style="flex:1;font-size:13px">${esc(s.name)}</span>
@@ -1576,49 +1767,41 @@ async function loadBroadcasts() {
                 </label>`).join('')}
             </div>
           </div>
-
           <div class="form-group">
             <label class="form-label" style="display:flex;justify-content:space-between">
-              <span>Verzögerung zwischen Servern</span>
+              <span>Verzögerung</span>
               <span id="bc-delay-val" style="color:var(--accent)">0 ms</span>
             </label>
-            <input type="range" id="bc-delay" min="0" max="2000" step="100" value="0" class="form-input" style="padding:4px 0"
+            <input type="range" id="bc-delay" min="0" max="2000" step="100" value="0"
+              class="form-input" style="padding:4px 0"
               oninput="document.getElementById('bc-delay-val').textContent=this.value+' ms'"/>
           </div>
-
-          <button class="btn btn-primary btn-block" onclick="doBroadcast()" id="bc-send-btn">
-            <i data-lucide="megaphone"></i> Broadcast senden
+          <button class="btn btn-primary btn-block" id="bc-send-btn" onclick="doBroadcast()">
+            <i data-lucide="terminal"></i> Befehl senden
           </button>
           <div id="bc-result" class="hidden" style="margin-top:10px"></div>
         </div>
-      </div>
-
-      <!-- History Panel -->
-      <div class="card" style="position:sticky;top:16px">
-        <div class="card-header" style="margin-bottom:12px">
-          <div class="card-title"><i data-lucide="history"></i> Verlauf</div>
-          <button class="btn btn-ghost btn-sm" onclick="loadBroadcasts()"><i data-lucide="rotate-ccw"></i></button>
+        <div class="card" style="position:sticky;top:16px">
+          <div class="card-title" style="margin-bottom:12px"><i data-lucide="history"></i> Raw-Verlauf</div>
+          ${history.filter(h=>h.type==='broadcast').length === 0
+            ? '<div class="empty" style="padding:24px"><p>Noch keine Raw-Broadcasts</p></div>'
+            : `<div style="display:flex;flex-direction:column;gap:6px;max-height:500px;overflow-y:auto">
+                ${history.filter(h=>h.type==='broadcast').slice(0,25).map(h => bcHistoryCard(h)).join('')}
+              </div>`}
         </div>
-        ${history.length === 0
-          ? '<div class="empty" style="padding:24px"><p>Noch keine Broadcasts</p></div>'
-          : `<div style="display:flex;flex-direction:column;gap:6px;max-height:480px;overflow-y:auto">
-              ${history.slice(0,30).map(h => `
-                <div style="background:var(--bg3);border-radius:8px;padding:10px 12px">
-                  <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                    <code style="font-size:12px;color:var(--accent)">${esc(h.command?.slice(0,40)||'?')}${h.command?.length>40?'…':''}</code>
-                    <span style="font-size:10px;color:var(--text3)">${new Date(h.at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-                  </div>
-                  <div style="font-size:11px;color:var(--text2)">
-                    <span style="color:var(--accent3)"><i data-lucide="check-circle-2" style="width:10px;height:10px"></i> ${h.sent||0}</span>
-                    ${h.failed ? `<span style="color:var(--danger);margin-left:8px"><i data-lucide="x-circle" style="width:10px;height:10px"></i> ${h.failed}</span>` : ''}
-                    <span style="margin-left:8px;color:var(--text3)">/ ${h.target_count||0}</span>
-                  </div>
-                </div>`).join('')}
-            </div>`}
       </div>
+    </div>
+
+    <!-- HISTORY TAB -->
+    <div id="bc-panel-history" class="hidden">
+      ${history.length === 0
+        ? '<div class="card"><div class="empty" style="padding:40px"><p>Noch keine Broadcasts</p></div></div>'
+        : `<div style="display:flex;flex-direction:column;gap:8px">
+            ${history.slice(0,100).map(h => bcHistoryCard(h, true)).join('')}
+           </div>`}
     </div>`;
 
-  // Radio toggle
+  // Tab-Switcher
   document.querySelectorAll('input[name="bc-target"]').forEach(r => {
     r.addEventListener('change', () => {
       document.getElementById('bc-server-select').classList.toggle('hidden', r.value !== 'select');
@@ -1628,14 +1811,174 @@ async function loadBroadcasts() {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+// ── Tab-Switcher ──────────────────────────────────────────────────────────────
+function bcTab(tab, btn) {
+  document.querySelectorAll('#bc-tabs .tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ['announce','schedules','raw','history'].forEach(t => {
+    const el = document.getElementById('bc-panel-'+t);
+    if (el) el.classList.toggle('hidden', t !== tab);
+  });
+}
+
+// ── History-Karte ─────────────────────────────────────────────────────────────
+function bcHistoryCard(h, full = false) {
+  const typeLabel = { announce:'Ankündigung', announce_schedule:'Zeitplan', broadcast:'Raw' }[h.type] || h.type;
+  const typeColor = { announce:'var(--accent)', announce_schedule:'#c084fc', broadcast:'var(--warn)' }[h.type] || 'var(--text3)';
+  return `
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;border-left:3px solid ${typeColor}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px">
+        <div style="flex:1;min-width:0">
+          <span style="font-size:10px;font-weight:700;color:${typeColor};text-transform:uppercase;letter-spacing:.5px">${typeLabel}</span>
+          ${h.schedule_name ? `<span style="font-size:11px;color:var(--text3);margin-left:6px">${esc(h.schedule_name)}</span>` : ''}
+          ${full ? `<div style="font-size:12px;color:var(--text);margin-top:2px;word-break:break-word">${esc(h.command?.slice(0,120)||'?')}${(h.command?.length||0)>120?'…':''}</div>` : `<div style="font-size:12px;color:var(--text2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.command?.slice(0,60)||'?')}${(h.command?.length||0)>60?'…':''}</div>`}
+        </div>
+        <span style="font-size:10px;color:var(--text3);flex-shrink:0">${new Date(h.at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+      </div>
+      <div style="display:flex;gap:10px;font-size:11px;flex-wrap:wrap">
+        <span style="color:var(--accent3)"><i data-lucide="check-circle-2" style="width:10px;height:10px"></i> ${h.sent||0} gesendet</span>
+        ${h.failed ? `<span style="color:var(--danger)"><i data-lucide="x-circle" style="width:10px;height:10px"></i> ${h.failed} Fehler</span>` : ''}
+        <span style="color:var(--text3)">/ ${h.target_count||0} Ziel${h.target_count!==1?'e':''}</span>
+        ${h.discord_ok === true ? '<span style="color:#7289DA"><i data-lucide="message-square" style="width:10px;height:10px"></i> Discord</span>' : ''}
+        ${h.discord_ok === false ? '<span style="color:var(--danger)">Discord fehlgeschlagen</span>' : ''}
+      </div>
+    </div>`;
+}
+
+// ── Schedule-Karte ────────────────────────────────────────────────────────────
+function bcScheduleCard(s) {
+  const nextCron = s.enabled ? scheduleNextRun(s.cron) : null;
+  return `
+    <div class="card" style="border-left:3px solid ${s.enabled?'var(--accent)':'var(--border)'}">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="width:38px;height:38px;border-radius:8px;background:${s.enabled?'rgba(0,212,255,.1)':'var(--bg3)'};display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i data-lucide="calendar-clock" style="width:18px;height:18px;color:${s.enabled?'var(--accent)':'var(--text3)'}"></i>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">
+            <strong style="font-size:14px">${esc(s.name)}</strong>
+            <span style="font-size:10px;padding:2px 8px;border-radius:8px;font-weight:700;
+              background:${s.enabled?'rgba(0,245,160,.1)':'rgba(100,116,139,.15)'};
+              color:${s.enabled?'var(--accent3)':'var(--text3)'};
+              border:1px solid ${s.enabled?'rgba(0,245,160,.2)':'rgba(100,116,139,.2)'}">
+              ${s.enabled ? 'Aktiv' : 'Deaktiviert'}
+            </span>
+          </div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px;word-break:break-word">
+            ${esc(s.message.slice(0,120))}${s.message.length>120?'…':''}
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--text3)">
+            <span><i data-lucide="clock" style="width:10px;height:10px"></i> <code>${esc(s.cron)}</code></span>
+            ${nextCron ? `<span style="color:var(--accent)"><i data-lucide="timer" style="width:10px;height:10px"></i> Nächste: ${nextCron}</span>` : ''}
+            <span><i data-lucide="target" style="width:10px;height:10px"></i> ${s.target === 'running' ? 'Laufende Server' : 'Alle Server'}</span>
+            ${s.discord_enabled ? '<span style="color:#7289DA"><i data-lucide="message-square" style="width:10px;height:10px"></i> Discord</span>' : ''}
+            ${s.last_run_at ? `<span>Zuletzt: ${new Date(s.last_run_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>` : ''}
+            ${s.last_result ? `<span style="color:${s.last_result.includes('Fehler')?'var(--danger)':'var(--accent3)'}">${esc(s.last_result.slice(0,60))}</span>` : ''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="runScheduleNow('${s.id}','${esc(s.name)}')" title="Jetzt ausführen">
+            <i data-lucide="play"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="editSchedule('${s.id}')" title="Bearbeiten">
+            <i data-lucide="pencil"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleSchedule('${s.id}',${s.enabled?0:1})" title="${s.enabled?'Deaktivieren':'Aktivieren'}">
+            <i data-lucide="${s.enabled?'pause':'play-circle'}"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm text-danger" onclick="deleteSchedule('${s.id}','${esc(s.name)}')" title="Löschen">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Nächsten Cron-Zeitpunkt berechnen (simpel) ────────────────────────────────
+function scheduleNextRun(cronExpr) {
+  const parts = cronExpr.trim().split(/\s+/);
+  if (parts.length !== 5) return null;
+  const [min, hour] = parts;
+  if (min !== '*' && hour !== '*') {
+    const h = parseInt(hour), m = parseInt(min);
+    if (!isNaN(h) && !isNaN(m)) {
+      const now   = new Date();
+      const next  = new Date();
+      next.setHours(h, m, 0, 0);
+      if (next <= now) next.setDate(next.getDate() + 1);
+      return next.toLocaleString('de-DE', { weekday:'short', hour:'2-digit', minute:'2-digit' });
+    }
+  }
+  if (hour !== '*' && min === '*') return `jede Stunde in Std. ${hour}`;
+  if (min !== '*' && hour === '*') return `täglich Minute ${min}`;
+  return 'benutzerdefiniert';
+}
+
+// ── Live-Vorschau ─────────────────────────────────────────────────────────────
+function annUpdatePreview() {
+  const msg = document.getElementById('ann-msg')?.value || '';
+  const cmd = document.getElementById('ann-cmd')?.value || 'say {message}';
+  const prev = document.getElementById('ann-preview');
+  const prevText = document.getElementById('ann-preview-text');
+  if (!msg.trim()) { if (prev) prev.style.display = 'none'; return; }
+  const result = cmd.includes('{message}') ? cmd.replace(/\{message\}/g, msg) : cmd + ' ' + msg;
+  if (prev) prev.style.display = 'block';
+  if (prevText) prevText.textContent = '> ' + result;
+}
+
+// ── Announce senden ───────────────────────────────────────────────────────────
+async function doAnnounce() {
+  const msg = document.getElementById('ann-msg')?.value?.trim();
+  if (!msg) { toast('Nachricht erforderlich', 'error'); return; }
+
+  const target          = document.querySelector('input[name="ann-target"]:checked')?.value || 'running';
+  const delay_ms        = parseInt(document.getElementById('ann-delay')?.value) || 0;
+  const server_command  = document.getElementById('ann-cmd')?.value?.trim() || 'say {message}';
+  const discord_enabled = document.getElementById('ann-discord-enabled')?.checked || false;
+  const discord_webhook = document.getElementById('ann-discord-url')?.value?.trim() || '';
+
+  if (discord_enabled && !discord_webhook) {
+    toast('Webhook-URL erforderlich wenn Discord aktiv', 'error'); return;
+  }
+
+  const btn = document.getElementById('ann-send-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Sende…'; }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  try {
+    const res = await API.post('/servers/announce', {
+      message: msg, target, delay_ms, server_command,
+      discord_enabled, discord_webhook,
+    });
+
+    const el = document.getElementById('ann-result');
+    if (el) {
+      el.className = 'success-msg';
+      el.innerHTML = `<i data-lucide="check-circle-2"></i> Ankündigung wird gesendet…`;
+      el.classList.remove('hidden');
+    }
+    toast('Ankündigung wird gesendet', 'success');
+    document.getElementById('ann-msg').value = '';
+    annUpdatePreview();
+    setTimeout(() => loadBroadcasts(), 3500);
+  } catch(e) {
+    toast(e.message, 'error');
+    const el = document.getElementById('ann-result');
+    if (el) { el.className = 'error-msg'; el.textContent = e.message; el.classList.remove('hidden'); }
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="send"></i> Ankündigung senden'; }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+// ── Raw-Broadcast senden ──────────────────────────────────────────────────────
 async function doBroadcast() {
   const cmd = document.getElementById('bc-cmd')?.value?.trim();
   if (!cmd) { toast('Befehl erforderlich', 'error'); return; }
 
-  const target  = document.querySelector('input[name="bc-target"]:checked')?.value || 'running';
-  const delayMs = parseInt(document.getElementById('bc-delay')?.value) || 0;
-
-  let serverIds = undefined;
+  const target    = document.querySelector('input[name="bc-target"]:checked')?.value || 'running';
+  const delayMs   = parseInt(document.getElementById('bc-delay')?.value) || 0;
+  let serverIds;
   if (target === 'select') {
     serverIds = [...document.querySelectorAll('.bc-srv-cb:checked')].map(cb => cb.value);
     if (!serverIds.length) { toast('Mindestens einen Server auswählen', 'error'); return; }
@@ -1648,11 +1991,10 @@ async function doBroadcast() {
   try {
     const res = await API.post('/servers/broadcast', {
       command: cmd,
-      target: target === 'select' ? 'custom' : target,
+      target: target === 'select' ? 'running' : target,
       server_ids: serverIds,
       delay_ms: delayMs,
     });
-
     const el = document.getElementById('bc-result');
     if (el) {
       el.className = 'success-msg';
@@ -1665,8 +2007,550 @@ async function doBroadcast() {
   } catch(e) {
     toast(e.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="megaphone"></i> Broadcast senden'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="terminal"></i> Befehl senden'; }
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }
+}
+
+// ── Schedule erstellen / bearbeiten ──────────────────────────────────────────
+function scheduleModalHtml(s = {}) {
+  return `
+    <div class="form-group">
+      <label class="form-label">Name *</label>
+      <input id="sch-name" class="form-input" value="${esc(s.name||'')}" placeholder="Tägliche Wartungsankündigung"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label" style="display:flex;justify-content:space-between">
+        <span>Nachricht *</span>
+        <span id="sch-char" style="font-size:11px;color:var(--text3)">${(s.message||'').length} Zeichen</span>
+      </label>
+      <textarea id="sch-msg" class="form-input" rows="3"
+        oninput="document.getElementById('sch-char').textContent=this.value.length+' Zeichen'"
+        placeholder="Der Server wird in 5 Minuten neu gestartet.">${esc(s.message||'')}</textarea>
+    </div>
+    <div class="grid grid-2" style="gap:12px;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">Cron-Ausdruck *</label>
+        <input id="sch-cron" class="form-input" value="${esc(s.cron||'0 20 * * *')}" placeholder="0 20 * * *"/>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">
+          <a href="https://crontab.guru" target="_blank" style="color:var(--accent)">crontab.guru</a>
+          — Beispiel: <code>0 20 * * *</code> = täglich 20:00
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Konsolen-Befehl</label>
+        <input id="sch-cmd" class="form-input" value="${esc(s.server_command||'say {message}')}" placeholder="say {message}"/>
+      </div>
+    </div>
+    <div class="grid grid-2" style="gap:12px;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">Ziel</label>
+        <select id="sch-target" class="form-input">
+          <option value="running" ${(s.target||'running')==='running'?'selected':''}>Laufende Server</option>
+          <option value="all"     ${s.target==='all'?'selected':''}>Alle Server</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Verzögerung</label>
+        <select id="sch-delay" class="form-input">
+          ${[0,200,500,1000,2000].map(d =>
+            `<option value="${d}" ${(s.delay_ms||0)===d?'selected':''}>${d===0?'Kein Delay':d+' ms'}</option>`
+          ).join('')}
+        </select>
+      </div>
+    </div>
+
+    <!-- Discord -->
+    <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <label class="toggle-wrap">
+          <input type="checkbox" id="sch-discord-enabled" class="toggle-cb"
+            ${s.discord_enabled?'checked':''}
+            onchange="document.getElementById('sch-discord-row').classList.toggle('hidden',!this.checked)"/>
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        </label>
+        <span style="font-size:13px;font-weight:500"><i data-lucide="message-square"></i> Discord-Webhook</span>
+      </div>
+      <div id="sch-discord-row" class="${s.discord_enabled?'':'hidden'}">
+        <input id="sch-discord-url" class="form-input" type="url"
+          value="${esc(s.discord_webhook||'')}" placeholder="https://discord.com/api/webhooks/…"/>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px">
+      <label class="toggle-wrap">
+        <input type="checkbox" id="sch-enabled" class="toggle-cb" ${(s.enabled===undefined||s.enabled)?'checked':''}/>
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      </label>
+      <span style="font-size:13px">Zeitplan aktivieren</span>
+    </div>`;
+}
+
+function showCreateSchedule() {
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="calendar-plus"></i> Zeitplan erstellen</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    ${scheduleModalHtml()}
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitCreateSchedule()">
+        <i data-lucide="calendar-plus"></i> Erstellen
+      </button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function submitCreateSchedule() {
+  const errEl = document.getElementById('m-error');
+  const body  = scheduleFormData();
+  if (!body.name) { errEl.textContent = 'Name erforderlich'; errEl.classList.remove('hidden'); return; }
+  if (!body.message) { errEl.textContent = 'Nachricht erforderlich'; errEl.classList.remove('hidden'); return; }
+  if (body.cron.trim().split(/\s+/).length !== 5) { errEl.textContent = 'Ungültiges Cron-Format (5 Felder)'; errEl.classList.remove('hidden'); return; }
+  try {
+    await API.post('/servers/announce/schedules', body);
+    toast('Zeitplan erstellt', 'success');
+    closeModal();
+    loadBroadcasts();
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function editSchedule(id) {
+  const schedules = await API.get('/servers/announce/schedules').catch(() => []);
+  const s = schedules.find(x => x.id === id);
+  if (!s) { toast('Zeitplan nicht gefunden', 'error'); return; }
+
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="pencil"></i> Zeitplan bearbeiten</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    ${scheduleModalHtml(s)}
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitEditSchedule('${id}')">
+        <i data-lucide="save"></i> Speichern
+      </button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function submitEditSchedule(id) {
+  const errEl = document.getElementById('m-error');
+  const body  = scheduleFormData();
+  if (!body.name || !body.message) { errEl.textContent = 'Name und Nachricht erforderlich'; errEl.classList.remove('hidden'); return; }
+  try {
+    await API.patch(`/servers/announce/schedules/${id}`, body);
+    toast('Zeitplan gespeichert', 'success');
+    closeModal();
+    loadBroadcasts();
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+function scheduleFormData() {
+  return {
+    name:             document.getElementById('sch-name')?.value?.trim() || '',
+    message:          document.getElementById('sch-msg')?.value?.trim()  || '',
+    cron:             document.getElementById('sch-cron')?.value?.trim()  || '0 20 * * *',
+    server_command:   document.getElementById('sch-cmd')?.value?.trim()   || 'say {message}',
+    target:           document.getElementById('sch-target')?.value        || 'running',
+    delay_ms:         parseInt(document.getElementById('sch-delay')?.value) || 0,
+    discord_enabled:  document.getElementById('sch-discord-enabled')?.checked || false,
+    discord_webhook:  document.getElementById('sch-discord-url')?.value?.trim() || '',
+    enabled:          document.getElementById('sch-enabled')?.checked ?? true,
+  };
+}
+
+async function runScheduleNow(id, name) {
+  try {
+    await API.post(`/servers/announce/schedules/${id}/run`, {});
+    toast(`"${name}" wird ausgeführt…`, 'success');
+    setTimeout(() => loadBroadcasts(), 3000);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function toggleSchedule(id, enabled) {
+  try {
+    await API.patch(`/servers/announce/schedules/${id}`, { enabled: !!enabled });
+    toast(enabled ? 'Zeitplan aktiviert' : 'Zeitplan deaktiviert', 'success');
+    loadBroadcasts();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteSchedule(id, name) {
+  if (!confirm(`Zeitplan "${name}" wirklich löschen?`)) return;
+  try {
+    await API.delete(`/servers/announce/schedules/${id}`);
+    toast('Zeitplan gelöscht', 'success');
+    loadBroadcasts();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN: DATENBANK-HOSTS
+// ═══════════════════════════════════════════════════════════════
+async function loadAdminDbHosts() {
+  document.getElementById('page-actions').innerHTML =
+    `<button class="btn btn-primary" onclick="showAddDbHost()"><i data-lucide="plus"></i> Host hinzufügen</button>`;
+
+  const hosts = await API.get('/admin/database-hosts').catch(() => []);
+
+  document.getElementById('page-content').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <!-- Info Card -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:8px"><i data-lucide="info"></i> Datenbank-Hosts</div>
+        <p style="font-size:13px;color:var(--text2);margin-bottom:10px">
+          Verwalte MySQL/MariaDB-Hosts auf denen NexPanel automatisch Datenbanken und Benutzer anlegen kann.
+          Pro Server-Datenbank wird ein separater Datenbanknutzer mit eingeschränkten Berechtigungen erstellt.
+        </p>
+        <div class="info-msg" style="font-size:12px">
+          <i data-lucide="package"></i>
+          MySQL-Unterstützung benötigt <code>npm install mysql2</code>.
+          Ohne <code>mysql2</code> werden Datenbanken in NexPanel gespeichert, müssen aber manuell im MySQL-Server angelegt werden.
+        </div>
+      </div>
+
+      <!-- Hosts List -->
+      ${hosts.length === 0
+        ? `<div class="card">
+             <div class="empty" style="padding:32px">
+               <div class="empty-icon"><i data-lucide="server"></i></div>
+               <h3>Keine Hosts konfiguriert</h3>
+               <p>Füge einen MySQL/MariaDB-Host hinzu</p>
+               <button class="btn btn-primary" style="margin-top:14px" onclick="showAddDbHost()">
+                 <i data-lucide="plus"></i> Host hinzufügen
+               </button>
+             </div>
+           </div>`
+        : hosts.map(h => `
+            <div class="card" style="border-left:3px solid ${h.is_default?'var(--accent)':'var(--border)'}">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="width:40px;height:40px;border-radius:8px;background:rgba(0,212,255,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <i data-lucide="database" style="width:20px;height:20px;color:var(--accent)"></i>
+                </div>
+                <div style="flex:1">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                    <strong style="font-size:14px">${esc(h.name)}</strong>
+                    ${h.is_default ? '<span style="font-size:10px;background:rgba(0,212,255,.15);color:var(--accent);padding:2px 8px;border-radius:8px;font-weight:700">Standard</span>' : ''}
+                  </div>
+                  <div style="font-size:12px;color:var(--text3);display:flex;gap:14px;flex-wrap:wrap">
+                    <span><code>${esc(h.host)}:${h.port}</code></span>
+                    <span>Benutzer: <code>${esc(h.root_user)}</code></span>
+                    ${h.phpmyadmin_url ? `<span><a href="${esc(h.phpmyadmin_url)}" target="_blank" style="color:var(--accent)">phpMyAdmin</a></span>` : ''}
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-ghost btn-sm" onclick="testDbHost('${h.id}')" title="Verbindung testen">
+                    <i data-lucide="plug"></i>
+                  </button>
+                  <button class="btn btn-ghost btn-sm" onclick="showEditDbHost('${h.id}')" title="Bearbeiten">
+                    <i data-lucide="pencil"></i>
+                  </button>
+                  <button class="btn btn-ghost btn-sm text-danger" onclick="deleteDbHost('${h.id}','${esc(h.name)}')" title="Löschen">
+                    <i data-lucide="trash-2"></i>
+                  </button>
+                </div>
+              </div>
+            </div>`).join('')}
+
+      <!-- mysql2 Install Hint -->
+      <div class="card" style="background:var(--bg3)">
+        <div class="card-title" style="margin-bottom:8px"><i data-lucide="terminal"></i> Installation</div>
+        <pre style="font-size:12px;font-family:var(--mono);background:var(--bg);padding:12px;border-radius:8px;overflow-x:auto">npm install mysql2</pre>
+        <p style="font-size:12px;color:var(--text3);margin-top:8px">
+          Nach der Installation können Datenbanken automatisch in MySQL/MariaDB angelegt und gelöscht werden.
+        </p>
+      </div>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function dbHostForm(h = {}) {
+  return `
+    <div class="grid grid-2" style="gap:12px;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input id="dbh-name" class="form-input" placeholder="Lokale DB" value="${esc(h.name||'')}"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Host *</label>
+        <input id="dbh-host" class="form-input" placeholder="127.0.0.1" value="${esc(h.host||'127.0.0.1')}"/>
+      </div>
+    </div>
+    <div class="grid grid-2" style="gap:12px;margin-bottom:12px">
+      <div class="form-group">
+        <label class="form-label">Port</label>
+        <input id="dbh-port" class="form-input" type="number" value="${h.port||3306}"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Root-Benutzer</label>
+        <input id="dbh-user" class="form-input" placeholder="root" value="${esc(h.root_user||'root')}"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Root-Passwort</label>
+      <input id="dbh-pass" class="form-input" type="password" placeholder="${h.id ? '(unverändert lassen)' : 'Passwort'}"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">phpMyAdmin URL <span style="color:var(--text3)">(optional)</span></label>
+      <input id="dbh-pma" class="form-input" placeholder="https://phpmyadmin.example.com" value="${esc(h.phpmyadmin_url||'')}"/>
+      <div style="font-size:11px;color:var(--text3);margin-top:3px">
+        Wenn angegeben, wird ein direkter Link zu phpMyAdmin in der Datenbank-Übersicht angezeigt.
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <label class="toggle-wrap">
+        <input type="checkbox" id="dbh-default" class="toggle-cb" ${h.is_default?'checked':''}/>
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      </label>
+      <span style="font-size:13px">Als Standard-Host verwenden</span>
+    </div>`;
+}
+
+function showAddDbHost() {
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="database"></i> Datenbank-Host hinzufügen</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    ${dbHostForm()}
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitAddDbHost()"><i data-lucide="plus"></i> Hinzufügen</button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function submitAddDbHost() {
+  const errEl = document.getElementById('m-error');
+  const body = {
+    name:           document.getElementById('dbh-name').value.trim(),
+    host:           document.getElementById('dbh-host').value.trim(),
+    port:           parseInt(document.getElementById('dbh-port').value) || 3306,
+    root_user:      document.getElementById('dbh-user').value.trim() || 'root',
+    root_password:  document.getElementById('dbh-pass').value,
+    phpmyadmin_url: document.getElementById('dbh-pma').value.trim(),
+    is_default:     document.getElementById('dbh-default').checked,
+  };
+  if (!body.name || !body.host) { errEl.textContent='Name und Host erforderlich'; errEl.classList.remove('hidden'); return; }
+  try {
+    await API.post('/admin/database-hosts', body);
+    toast('Host hinzugefügt', 'success');
+    closeModal();
+    loadAdminDbHosts();
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function showEditDbHost(id) {
+  const hosts = await API.get('/admin/database-hosts').catch(() => []);
+  const h = hosts.find(x => x.id === id);
+  if (!h) return toast('Host nicht gefunden', 'error');
+
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="pencil"></i> Host bearbeiten</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    ${dbHostForm(h)}
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="submitEditDbHost('${id}')"><i data-lucide="save"></i> Speichern</button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function submitEditDbHost(id) {
+  const errEl = document.getElementById('m-error');
+  const pass = document.getElementById('dbh-pass').value;
+  const body = {
+    name:           document.getElementById('dbh-name').value.trim(),
+    host:           document.getElementById('dbh-host').value.trim(),
+    port:           parseInt(document.getElementById('dbh-port').value) || 3306,
+    root_user:      document.getElementById('dbh-user').value.trim(),
+    phpmyadmin_url: document.getElementById('dbh-pma').value.trim(),
+    is_default:     document.getElementById('dbh-default').checked,
+    ...(pass ? { root_password: pass } : {}),
+  };
+  try {
+    await API.patch(`/admin/database-hosts/${id}`, body);
+    toast('Host gespeichert', 'success');
+    closeModal();
+    loadAdminDbHosts();
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function testDbHost(id) {
+  toast('Teste Verbindung…', 'info');
+  try {
+    const res = await API.post(`/admin/database-hosts/${id}/test`, {});
+    if (res.success) toast(`Verbunden! MySQL ${res.version}`, 'success');
+    else toast(`Verbindung fehlgeschlagen: ${res.error}`, 'error');
+  } catch(e) { toast(`Fehler: ${e.message}`, 'error'); }
+}
+
+async function deleteDbHost(id, name) {
+  if (!confirm(`Host "${name}" wirklich entfernen?\n\nBestehende Datenbank-Einträge bleiben erhalten, können aber nicht mehr automatisch verwaltet werden.`)) return;
+  try {
+    await API.delete(`/admin/database-hosts/${id}`);
+    toast('Host entfernt', 'success');
+    loadAdminDbHosts();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN: USER-QUOTAS
+// ═══════════════════════════════════════════════════════════════
+
+async function loadAdminQuotas() {
+  document.getElementById('page-actions').innerHTML = '';
+  const users = await API.get('/admin/quotas').catch(() => []);
+
+  function bar(used, max, color='var(--accent)') {
+    const pct = max > 0 ? Math.min(100, Math.round(used/max*100)) : 0;
+    const col  = pct >= 90 ? 'var(--danger)' : pct >= 70 ? 'var(--warn)' : color;
+    return `<div style="background:var(--bg3);border-radius:4px;height:6px;margin-top:3px;overflow:hidden">
+      <div style="height:100%;width:${pct}%;background:${col};border-radius:4px;transition:.3s"></div>
+    </div><div style="font-size:10px;color:var(--text3);margin-top:2px">${used} / ${max}</div>`;
+  }
+
+  document.getElementById('page-content').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:6px"><i data-lucide="gauge"></i> User-Ressourcen-Quotas</div>
+        <p style="font-size:13px;color:var(--text2)">
+          Setze Ressourcenlimits pro Benutzer. Admins sind von Quotas ausgenommen.
+          Server-Erstellung wird blockiert wenn die Quota überschritten wird.
+        </p>
+      </div>
+
+      <div class="card" style="padding:0;overflow:hidden">
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:var(--bg3)">
+              <th style="padding:10px 16px;text-align:left;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase">Benutzer</th>
+              <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase">Server</th>
+              <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase">RAM</th>
+              <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase">CPU</th>
+              <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase">Disk</th>
+              <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase">DBs</th>
+              <th style="padding:10px 12px;text-align:right;font-size:11px;color:var(--text3)"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${users.filter(u => u.role !== 'admin').map(u => `
+              <tr style="border-top:1px solid var(--border)" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+                <td style="padding:10px 16px">
+                  <div style="font-weight:600;font-size:13px">${esc(u.username)}</div>
+                  <div style="font-size:11px;color:var(--text3)">${esc(u.email)}</div>
+                </td>
+                <td style="padding:8px 12px;text-align:center;min-width:80px">
+                  ${bar(u.usage.servers, u.quota.max_servers)}
+                </td>
+                <td style="padding:8px 12px;text-align:center;min-width:90px">
+                  ${bar(Math.round(u.usage.ram_mb/1024*10)/10, Math.round(u.quota.max_ram_mb/1024*10)/10)}
+                  <div style="font-size:9px;color:var(--text3)">GB</div>
+                </td>
+                <td style="padding:8px 12px;text-align:center;min-width:80px">
+                  ${bar(u.usage.cpu_cores, u.quota.max_cpu_cores, 'var(--warn)')}
+                  <div style="font-size:9px;color:var(--text3)">Kerne</div>
+                </td>
+                <td style="padding:8px 12px;text-align:center;min-width:90px">
+                  ${bar(Math.round(u.usage.disk_mb/1024), Math.round(u.quota.max_disk_mb/1024), 'var(--accent3)')}
+                  <div style="font-size:9px;color:var(--text3)">GB</div>
+                </td>
+                <td style="padding:8px 12px;text-align:center;min-width:60px">
+                  ${bar(u.usage.dbs, u.quota.max_dbs, '#a78bfa')}
+                </td>
+                <td style="padding:8px 12px;text-align:right">
+                  <button class="btn btn-ghost btn-sm" onclick="editQuota('${u.id}','${esc(u.username)}')">
+                    <i data-lucide="pencil"></i>
+                  </button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        ${users.filter(u=>u.role!=='admin').length===0
+          ? '<div class="empty" style="padding:32px"><p>Keine regulären Benutzer</p></div>'
+          : ''}
+      </div>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function editQuota(userId, username) {
+  const data = await API.get(`/admin/quotas/${userId}`).catch(() => null);
+  if (!data) { toast('Quota nicht geladen', 'error'); return; }
+  const q = data.quota;
+  const u = data.usage;
+
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="gauge"></i> Quota: ${esc(username)}</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    <div class="info-msg" style="margin-bottom:14px;font-size:12px">
+      Aktuell: ${u.servers} Server · ${Math.round(u.ram_mb/1024*10)/10} GB RAM · ${u.cpu_cores} CPU · ${Math.round(u.disk_mb/1024)} GB Disk · ${u.dbs} DBs
+    </div>
+    <div class="grid grid-2" style="gap:10px;margin-bottom:12px">
+      ${[
+        ['q-servers',   'Max. Server',      q.max_servers,   1, 100,  1],
+        ['q-ram',       'Max. RAM (GB)',     Math.round(q.max_ram_mb/1024), 1, 512, 1],
+        ['q-cpu',       'Max. CPU Kerne',    q.max_cpu_cores, 1, 64,   0.5],
+        ['q-disk',      'Max. Disk (GB)',    Math.round(q.max_disk_mb/1024), 1, 2048, 1],
+        ['q-dbs',       'Max. Datenbanken',  q.max_dbs,       0, 100,  1],
+        ['q-backups',   'Max. Backups',      q.max_backups,   0, 200,  1],
+      ].map(([id, label, val, min, max, step]) => `
+        <div class="form-group">
+          <label class="form-label">${label}</label>
+          <input id="${id}" class="form-input" type="number" min="${min}" max="${max}" step="${step}" value="${val}"/>
+        </div>`).join('')}
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notiz</label>
+      <input id="q-note" class="form-input" value="${esc(q.note||'')}" placeholder="optional"/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm text-danger" onclick="resetQuota('${userId}','${esc(username)}')">Zurücksetzen</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveQuota('${userId}')"><i data-lucide="save"></i> Speichern</button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function saveQuota(userId) {
+  const ramGb  = parseFloat(document.getElementById('q-ram')?.value)   || 8;
+  const diskGb = parseFloat(document.getElementById('q-disk')?.value)  || 50;
+  try {
+    await API.put(`/admin/quotas/${userId}`, {
+      max_servers:   parseInt(document.getElementById('q-servers')?.value)  || 10,
+      max_ram_mb:    Math.round(ramGb * 1024),
+      max_cpu_cores: parseFloat(document.getElementById('q-cpu')?.value)    || 8,
+      max_disk_mb:   Math.round(diskGb * 1024),
+      max_dbs:       parseInt(document.getElementById('q-dbs')?.value)      || 5,
+      max_backups:   parseInt(document.getElementById('q-backups')?.value)  || 10,
+      note:          document.getElementById('q-note')?.value || '',
+    });
+    toast('Quota gespeichert', 'success');
+    closeModal();
+    loadAdminQuotas();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function resetQuota(userId, username) {
+  if (!confirm(`Quota für "${username}" auf Standard-Werte zurücksetzen?`)) return;
+  try {
+    await API.delete(`/admin/quotas/${userId}`);
+    toast('Quota zurückgesetzt', 'success');
+    closeModal();
+    loadAdminQuotas();
+  } catch(e) { toast(e.message, 'error'); }
 }
 

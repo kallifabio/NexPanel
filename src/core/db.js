@@ -570,6 +570,75 @@ try { db.prepare(`CREATE TABLE IF NOT EXISTS backup_schedules (
 )`).run(); } catch(e){}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_console_aliases_srv_user ON console_aliases(server_id, user_id)").run(); } catch(e){}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_server_favorite ON servers(user_id, is_favorite)").run(); } catch(e){}
+
+// ─── MIGRATIONEN: Server-Datenbanken ─────────────────────────────────────────
+try { db.prepare(`CREATE TABLE IF NOT EXISTS server_databases (
+  id            TEXT PRIMARY KEY,
+  server_id     TEXT NOT NULL,
+  db_name       TEXT NOT NULL,
+  db_user       TEXT NOT NULL,
+  db_password   TEXT NOT NULL,      -- bcrypt-verschlüsselt für Anzeige, klartext für Verbindung
+  db_password_clear TEXT NOT NULL DEFAULT '', -- einmalig anzeigbar, danach leer
+  host          TEXT NOT NULL DEFAULT '127.0.0.1',
+  port          INTEGER NOT NULL DEFAULT 3306,
+  note          TEXT NOT NULL DEFAULT '',
+  phpmyadmin_url TEXT DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(db_name),
+  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+)`).run(); } catch(e){}
+try { db.prepare("ALTER TABLE settings ADD COLUMN db_host TEXT DEFAULT '127.0.0.1'").run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_server_dbs ON server_databases(server_id)").run(); } catch(e){}
+
+// ─── MIGRATIONEN: IP-Whitelist, User-Quotas, Auto-Sleep ──────────────────────
+try { db.prepare("ALTER TABLE servers ADD COLUMN allowed_ips TEXT DEFAULT '[]'").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN auto_sleep_enabled INTEGER DEFAULT 0").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN auto_sleep_minutes INTEGER DEFAULT 30").run(); } catch(e){}
+try { db.prepare("ALTER TABLE servers ADD COLUMN last_activity_at TEXT").run(); } catch(e){}
+try { db.prepare(`CREATE TABLE IF NOT EXISTS user_quotas (
+  user_id       TEXT PRIMARY KEY,
+  max_servers   INTEGER DEFAULT 10,
+  max_ram_mb    INTEGER DEFAULT 8192,
+  max_cpu_cores REAL    DEFAULT 8,
+  max_disk_mb   INTEGER DEFAULT 51200,
+  max_dbs       INTEGER DEFAULT 5,
+  max_backups   INTEGER DEFAULT 10,
+  note          TEXT DEFAULT '',
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+)`).run(); } catch(e){}
+try { db.prepare("CREATE INDEX IF NOT EXISTS idx_server_activity ON servers(last_activity_at, auto_sleep_enabled)").run(); } catch(e){}
+
+// ─── MIGRATIONEN: Announce-Schedules ─────────────────────────────────────────
+try { db.prepare(`CREATE TABLE IF NOT EXISTS announce_schedules (
+  id              TEXT PRIMARY KEY,
+  name            TEXT NOT NULL,
+  message         TEXT NOT NULL,
+  cron            TEXT NOT NULL DEFAULT '0 * * * *',
+  target          TEXT NOT NULL DEFAULT 'running',
+  delay_ms        INTEGER NOT NULL DEFAULT 0,
+  discord_webhook TEXT NOT NULL DEFAULT '',
+  discord_enabled INTEGER NOT NULL DEFAULT 0,
+  server_command  TEXT NOT NULL DEFAULT 'say {message}',
+  enabled         INTEGER NOT NULL DEFAULT 1,
+  last_run_at     TEXT,
+  last_result     TEXT,
+  created_by      TEXT,
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+)`).run(); } catch(e){}
+
+// ─── MIGRATION: RCON-Konfiguration ───────────────────────────────────────────
+try { db.prepare(`CREATE TABLE IF NOT EXISTS server_rcon_config (
+  server_id     TEXT PRIMARY KEY,
+  rcon_host     TEXT NOT NULL DEFAULT '127.0.0.1',
+  rcon_port     INTEGER NOT NULL DEFAULT 25575,
+  rcon_password TEXT NOT NULL DEFAULT '',
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+)`).run(); } catch(e){}
 // ─── INDIZES ──────────────────────────────────────────────────────────────────
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_stats_server_time ON server_stats_log(server_id, recorded_at)").run(); } catch(e){}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_console_server_user ON console_history(server_id, user_id, executed_at)").run(); } catch(e){}

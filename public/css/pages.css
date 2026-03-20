@@ -219,3 +219,24 @@
 /* ─── SFTP TAB ────────────────────────────────────────────────────────────────── */
 .sftp-command-box{background:var(--bg3);border-radius:8px;padding:12px 16px;font-family:var(--mono);font-size:13px;color:var(--accent);cursor:pointer;position:relative;overflow:hidden}
 .sftp-command-box:hover::after{content:'Kopieren';position:absolute;right:12px;top:50%;transform:translateY(-50%);background:var(--accent);color:#000;padding:3px 8px;border-radius:4px;font-size:11px}
+
+/* ── Server-Filter-Buttons & Favoriten-Abschnitt ────────────────────────── */
+#srv-filter-all.active,
+#srv-filter-fav.active,
+#srv-filter-run.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+#srv-filter-fav.active { background: #facc15; }
+#srv-filter-run.active { background: var(--accent3); }
+
+.fav-btn { transition: transform .15s; }
+.fav-btn:hover { transform: scale(1.2); }
+.fav-btn.fav-active { animation: favPop .25s ease; }
+
+@keyframes favPop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}

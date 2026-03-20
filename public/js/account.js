@@ -803,3 +803,46 @@ async function changePassword() {
     sucEl.textContent = '<i data-lucide="check-circle"></i> Passwort erfolgreich geändert!'; sucEl.classList.remove('hidden');
   } catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// QUOTA-ANZEIGE (im Dashboard / Einstellungen)
+// ═══════════════════════════════════════════════════════════════
+
+async function loadQuotaWidget() {
+  const container = document.getElementById('quota-widget');
+  if (!container) return;
+
+  const data = await API.get('/account/quota').catch(() => null);
+  if (!data) { container.innerHTML = ''; return; }
+
+  const { quota: q, usage: u, percentages: pct } = data;
+
+  function bar(used, max, usedFmt, maxFmt, label, color='var(--accent)') {
+    const p = pct[label] || 0;
+    const col = p >= 90 ? 'var(--danger)' : p >= 70 ? 'var(--warn)' : color;
+    return `
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:3px">
+          <span>${label.toUpperCase()}</span>
+          <span style="color:${p>=90?'var(--danger)':p>=70?'var(--warn)':'var(--text2)'}">${usedFmt} / ${maxFmt}</span>
+        </div>
+        <div style="background:var(--bg3);border-radius:4px;height:5px;overflow:hidden">
+          <div style="height:100%;width:${p}%;background:${col};border-radius:4px;transition:.4s"></div>
+        </div>
+      </div>`;
+  }
+
+  container.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title" style="margin-bottom:12px"><i data-lucide="gauge"></i> Ressourcen-Quota</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${bar(u.servers, q.max_servers, u.servers+' Server', q.max_servers+' max', 'servers')}
+        ${bar(u.ram_mb, q.max_ram_mb, (u.ram_mb/1024).toFixed(1)+'GB', (q.max_ram_mb/1024).toFixed(0)+'GB', 'ram')}
+        ${bar(u.cpu_cores, q.max_cpu_cores, u.cpu_cores+' Kerne', q.max_cpu_cores+' max', 'cpu', 'var(--warn)')}
+        ${bar(u.disk_mb, q.max_disk_mb, Math.round(u.disk_mb/1024)+'GB', Math.round(q.max_disk_mb/1024)+'GB', 'disk', 'var(--accent3)')}
+        ${bar(u.dbs, q.max_dbs, u.dbs+' DBs', q.max_dbs+' max', 'dbs', '#a78bfa')}
+      </div>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+

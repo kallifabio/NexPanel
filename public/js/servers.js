@@ -45,6 +45,34 @@ async function bulkPower(action) {
   } catch(e) { toast(e.message, 'error'); }
 }
 
+// ─── localStorage-Favoriten lesen/schreiben ──────────────────────────────────
+function getFavCache() {
+  try { return new Set(JSON.parse(localStorage.getItem('hp_favorites') || '[]')); }
+  catch { return new Set(); }
+}
+function setFavCache(ids) {
+  try { localStorage.setItem('hp_favorites', JSON.stringify([...ids])); } catch {}
+}
+function isFavCached(id) { return getFavCache().has(id); }
+function addFavCache(id) { const s = getFavCache(); s.add(id); setFavCache(s); }
+function removeFavCache(id) { const s = getFavCache(); s.delete(id); setFavCache(s); }
+
+// ─── Server-Liste sortieren (Favoriten oben) ──────────────────────────────────
+function sortServers(servers) {
+  const favCache = getFavCache();
+  // Merge: Server-DB-Favorit ODER localStorage-Cache
+  const withFav = servers.map(s => ({
+    ...s,
+    is_favorite: !!(s.is_favorite || favCache.has(s.id)),
+  }));
+  // Sortierung: Favoriten zuerst, dann alphabetisch nach Name
+  return withFav.sort((a, b) => {
+    if (a.is_favorite && !b.is_favorite) return -1;
+    if (!a.is_favorite && b.is_favorite) return 1;
+    return (a.name || '').localeCompare(b.name || '', 'de');
+  });
+}
+
 async function loadServers() {
   document.getElementById('page-actions').innerHTML = `
     <div id="bulk-toolbar" style="display:none;align-items:center;gap:8px;background:var(--bg3);padding:6px 12px;border-radius:8px;border:1px solid rgba(0,212,255,.3)">
@@ -54,16 +82,108 @@ async function loadServers() {
       <button class="btn btn-sm" style="background:#60a5fa22;color:#60a5fa;border:1px solid #60a5fa44" onclick="bulkPower('restart')"><i data-lucide="rotate-ccw"></i> Restart</button>
       <button class="btn btn-ghost btn-sm" onclick="clearBulkSelection()"><i data-lucide="x"></i></button>
     </div>
-    <button class="btn btn-primary" id="bulk-create-btn" onclick="showCreateServer()"><i data-lucide="plus"></i> Neuer Server</button>`;
+    <div style="display:flex;gap:8px;align-items:center">
+      <div style="display:flex;gap:4px;background:var(--bg3);border-radius:8px;padding:3px">
+        <button class="btn btn-ghost btn-sm" id="srv-filter-all" onclick="setServerFilter('all',this)" style="border-radius:6px;font-size:12px">Alle</button>
+        <button class="btn btn-ghost btn-sm" id="srv-filter-fav" onclick="setServerFilter('fav',this)" style="border-radius:6px;font-size:12px"><i data-lucide="star" style="width:12px;height:12px;color:#facc15"></i> Favoriten</button>
+        <button class="btn btn-ghost btn-sm" id="srv-filter-run" onclick="setServerFilter('run',this)" style="border-radius:6px;font-size:12px"><span style="color:var(--accent3)">●</span> Läuft</button>
+      </div>
+      <button class="btn btn-primary" id="bulk-create-btn" onclick="showCreateServer()"><i data-lucide="plus"></i> Neuer Server</button>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
   try {
-    const servers = await API.get('/servers');
-    document.getElementById('server-count-badge').textContent = servers.length;
-    if (servers.length === 0) {
+    const rawServers = await API.get('/servers');
+    document.getElementById('server-count-badge').textContent = rawServers.length;
+
+    if (rawServers.length === 0) {
       document.getElementById('page-content').innerHTML = `<div class="empty"><div class="empty-icon"><i data-lucide="server"></i></div><h3>Keine Server</h3><p>Erstelle deinen ersten Server</p><button class="btn btn-primary" style="margin-top:16px" onclick="showCreateServer()"><i data-lucide="plus"></i> Server erstellen</button></div>`;
       return;
     }
-    document.getElementById('page-content').innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">${servers.map(s => serverItemHtml(s, false)).join('')}</div>`;
-  } catch (e) { document.getElementById('page-content').innerHTML = `<div class="empty"><p class="text-danger">Fehler: ${esc(e.message)}</p></div>`; }
+
+    // Sync DB-Favoriten in localStorage
+    rawServers.forEach(s => {
+      if (s.is_favorite) addFavCache(s.id);
+    });
+
+    State._allServers = rawServers;
+    State._serverFilter = State._serverFilter || 'all';
+    renderServerList();
+  } catch (e) {
+    document.getElementById('page-content').innerHTML = `<div class="empty"><p class="text-danger">Fehler: ${esc(e.message)}</p></div>`;
+  }
+}
+
+let _currentFilter = 'all';
+function setServerFilter(filter, btn) {
+  _currentFilter = filter;
+  document.querySelectorAll('#page-actions .btn-ghost').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderServerList();
+}
+
+function renderServerList() {
+  const content = document.getElementById('page-content');
+  if (!content || !State._allServers) return;
+
+  let servers = sortServers(State._allServers);
+
+  // Filtern
+  if (_currentFilter === 'fav') {
+    servers = servers.filter(s => s.is_favorite);
+  } else if (_currentFilter === 'run') {
+    servers = servers.filter(s => s.status === 'running');
+  }
+
+  if (servers.length === 0) {
+    const emptyMsg = {
+      fav: 'Noch keine Favoriten — klicke den Stern auf einer Server-Karte.',
+      run: 'Keine Server gerade online.',
+      all: 'Keine Server vorhanden.',
+    }[_currentFilter] || 'Keine Server.';
+    content.innerHTML = `<div class="empty" style="padding:40px"><div class="empty-icon"><i data-lucide="${_currentFilter==='fav'?'star':_currentFilter==='run'?'activity':'server'}"></i></div><p>${emptyMsg}</p></div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  const favs   = servers.filter(s => s.is_favorite);
+  const others = servers.filter(s => !s.is_favorite);
+
+  let html = '';
+
+  // Favoriten-Abschnitt
+  if (favs.length > 0 && _currentFilter === 'all') {
+    html += `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;margin-top:2px">
+        <i data-lucide="star" style="width:13px;height:13px;color:#facc15;fill:#facc15"></i>
+        <span style="font-size:11px;font-weight:700;color:#facc15;text-transform:uppercase;letter-spacing:.6px">Favoriten</span>
+        <div style="flex:1;height:1px;background:rgba(250,204,21,.2)"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
+        ${favs.map(s => serverItemHtml(s, false)).join('')}
+      </div>`;
+
+    if (others.length > 0) {
+      html += `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <i data-lucide="server" style="width:13px;height:13px;color:var(--text3)"></i>
+          <span style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Alle Server</span>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${others.map(s => serverItemHtml(s, false)).join('')}
+        </div>`;
+    }
+  } else {
+    html = `<div style="display:flex;flex-direction:column;gap:6px">${servers.map(s => serverItemHtml(s, false)).join('')}</div>`;
+  }
+
+  content.innerHTML = html;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Active filter button
+  const filterBtn = document.getElementById(`srv-filter-${_currentFilter}`);
+  if (filterBtn) filterBtn.classList.add('active');
 }
 
 function serverItemHtml(s, compact) {
@@ -91,7 +211,14 @@ function serverItemHtml(s, compact) {
         </div>
       </div>
       <div class="server-resources"><div>${s.cpu_limit} ${parseFloat(s.cpu_limit)===1?"Kern":"Kerne"} · ${s.cpu_percent||100}% CPU</div><div>${s.memory_limit}MB RAM</div>${s.node_name?`<div style="color:var(--text3)">${esc(s.node_name)}</div>`:''}</div>
-      <button class="power-btn fav-btn${s.is_favorite?' fav-active':''}" title="${s.is_favorite?'Favorit entfernen':'Als Favorit markieren'}" onclick="event.stopPropagation();toggleFavorite('${s.id}',this)" style="color:${s.is_favorite?'#facc15':'var(--text3)'}"><i data-lucide="star"></i></button>
+      <button class="power-btn fav-btn${s.is_favorite?' fav-active':''}" title="${s.is_favorite?'Favorit entfernen':'Als Favorit markieren'}" onclick="event.stopPropagation();toggleFavorite('${s.id}',this)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
+          fill="${s.is_favorite?'#facc15':'none'}"
+          stroke="${s.is_favorite?'#facc15':'var(--text3)'}"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      </button>
       ${actions}
     </div>`;
 }
@@ -118,10 +245,11 @@ async function serverPower(id, action) {
 
 // ─── SERVER ERSTELLEN ─────────────────────────────────────────────────────────
 async function showCreateServer(preEgg) {
-  const [nodes, eggs, allocs] = await Promise.all([
+  const [nodes, eggs, allocs, quota] = await Promise.all([
     API.get('/nodes').catch(() => []),
     API.get('/eggs').catch(() => []),
     API.get('/allocations').catch(() => []),
+    API.get('/account/quota').catch(() => null),
   ]);
   const nodeOptions = `<option value="">Auto (Scaling)</option>` + nodes.map(n => {
     const on = n.connected;
@@ -223,9 +351,27 @@ async function showCreateServer(preEgg) {
     ${State.user.role==='admin'?`<div class="form-group"><label class="form-label">Besitzer (User-ID, leer = du selbst)</label><input type="text" id="m-userid" class="form-input" placeholder="User-ID (optional)"/></div>`:''}
     <div id="m-error" class="error-msg hidden"></div>
     <div class="modal-footer">
+      <!-- Quota-Anzeige -->
+      <div id="cs-quota-bar" style="flex:1;font-size:11px;color:var(--text3)"></div>
       <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
       <button class="btn btn-primary" onclick="submitCreateServer()">Server erstellen</button>
     </div>`, true);
+
+  // Quota-Bar befüllen
+  if (quota) {
+    const u = quota.usage, q = quota.quota;
+    const remServers = q.max_servers   - u.servers;
+    const remRamGb   = ((q.max_ram_mb  - u.ram_mb)  / 1024).toFixed(1);
+    const remCpu     = (q.max_cpu_cores - u.cpu_cores).toFixed(1);
+    const qEl = document.getElementById('cs-quota-bar');
+    if (qEl) {
+      const warn = remServers <= 1 || (q.max_ram_mb - u.ram_mb) < 512;
+      qEl.innerHTML = warn
+        ? `<span style="color:var(--warn)"><i data-lucide="alert-triangle" style="width:11px;height:11px;vertical-align:-2px"></i> ${remServers} Server · ${remRamGb}GB RAM · ${remCpu} CPU frei</span>`
+        : `<span style="color:var(--text3)"><i data-lucide="gauge" style="width:11px;height:11px;vertical-align:-2px"></i> ${remServers} Server · ${remRamGb}GB RAM · ${remCpu} CPU frei</span>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+  }
 
   // Freie Port-Allocations als klickbare Badges rendern
   const allocEl = document.getElementById('m-alloc-list');
@@ -361,7 +507,18 @@ async function submitCreateServer() {
     closeModal();
     navigate('server-detail', srv.id);
     loadServerCount();
-  } catch (e) { mErr(e.message); }
+  } catch (e) {
+    if (e.quota_exceeded || e.message?.includes('Limit') || e.message?.includes('quota')) {
+      // Show quota exceeded with details
+      const details = e.details?.join('\n') || e.message;
+      mErr('Quota überschritten: ' + e.message);
+      // Highlight quota bar
+      const qEl = document.getElementById('cs-quota-bar');
+      if (qEl) { qEl.style.color = 'var(--danger)'; qEl.innerHTML = '<i data-lucide="alert-circle" style="width:11px;height:11px"></i> ' + esc(e.message); if (typeof lucide !== 'undefined') lucide.createIcons(); }
+    } else {
+      mErr(e.message);
+    }
+  }
 }
 
 async function showEditServer(id) {

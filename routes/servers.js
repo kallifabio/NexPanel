@@ -86,6 +86,15 @@ router.post('/', authenticate, async (req, res) => {
     if (!node) return res.status(404).json({ error: 'Node nicht gefunden' });
 
     const targetUserId = (req.user.role === 'admin' && user_id) ? user_id : req.user.id;
+
+    // Quota-Check (nur für reguläre User, nicht für Admins die fremde Server erstellen)
+    if (req.user.role !== 'admin') {
+      try {
+        const { checkQuota } = require('./quotas');
+        const errors = checkQuota(targetUserId, { memory_limit, cpu_limit, disk_limit });
+        if (errors.length) return res.status(403).json({ error: errors[0], quota_exceeded: true, details: errors });
+      } catch (_) { /* quotas optional */ }
+    }
     const id = uuidv4();
 
     db.prepare(`

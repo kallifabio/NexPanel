@@ -69,6 +69,7 @@ async function loadServerDetail(id) {
       <button class="tab" onclick="detailTab('maintenance',this)"><i data-lucide="wrench"></i> Wartung</button>
       <button class="tab" onclick="detailTab('transfer',this)"><i data-lucide="package"></i> Transfer</button>
       <button class="tab" onclick="detailTab('reinstall',this)"><i data-lucide="refresh-cw"></i> Reinstall</button>
+      <button class="tab" onclick="detailTab('databases',this)"><i data-lucide="database"></i> Datenbanken</button>
     </div>
     </div>
 
@@ -111,6 +112,22 @@ async function loadServerDetail(id) {
           <div class="card">
             <div class="card-title" style="margin-bottom:8px"><i data-lucide="plug"></i> Ports</div>
             <div class="text-mono text-sm text-accent">${esc(portsHtml)}</div>
+          </div>
+          <div class="card" id="rcon-player-card" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+              <div class="card-title"><i data-lucide="users"></i> Spieler</div>
+              <button class="btn btn-ghost btn-xs" onclick="rconRefreshPlayers('${id}')" title="Aktualisieren">
+                <i data-lucide="rotate-ccw"></i>
+              </button>
+            </div>
+            <div id="rcon-player-list">
+              <div style="font-size:12px;color:var(--text3)">Verbinde RCON…</div>
+            </div>
+            <div id="rcon-player-count" style="font-size:11px;color:var(--text3);margin-top:6px;border-top:1px solid var(--border);padding-top:6px"></div>
+          </div>
+          <div class="card" id="rcon-quick-card" style="display:none">
+            <div class="card-title" style="margin-bottom:10px"><i data-lucide="zap"></i> Quick-Commands</div>
+            <div style="display:flex;flex-direction:column;gap:5px" id="rcon-quick-btns"></div>
           </div>
           <div class="card">
             <div class="card-title" style="margin-bottom:10px"><i data-lucide="settings"></i> Limits</div>
@@ -317,6 +334,10 @@ async function loadServerDetail(id) {
       <div id="reinstall-root"></div>
     </div>
 
+    <div id="detail-databases" class="hidden">
+      <div id="databases-root"></div>
+    </div>
+
     <div id="detail-network" class="hidden">
       <div id="network-root"><div class="empty"><div class="empty-icon spin"><i data-lucide="globe"></i></div><p>Lade Ports...</p></div></div>
     </div>
@@ -340,7 +361,7 @@ function detailTab(tab, btn) {
   btn.classList.add('active');
   // Scroll active tab into view
   btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-  ['console','stats','files','mods','info','network','schedule','users','activity','backups','sftp','notify','maintenance','transfer','reinstall'].forEach(x => document.getElementById('detail-'+x)?.classList.toggle('hidden', x!==tab));
+  ['console','stats','files','mods','info','network','schedule','users','activity','backups','sftp','notify','maintenance','transfer','reinstall','databases'].forEach(x => document.getElementById('detail-'+x)?.classList.toggle('hidden', x!==tab));
   if (tab === 'files' && State.serverDetail) {
     const _srv = State.server || {};
     const _itzg = (_srv.image||'').includes('itzg') || (_srv.image||'').includes('minecraft-server');
@@ -361,8 +382,11 @@ function detailTab(tab, btn) {
   if (tab === 'maintenance' && State.serverDetail) { maintenanceInit(State.serverDetail); }
   if (tab === 'transfer'    && State.serverDetail) { transferInit(State.serverDetail); }
   if (tab === 'reinstall'   && State.serverDetail) { reinstallInit(State.serverDetail); }
+  if (tab === 'databases'   && State.serverDetail) { dbTabInit(State.serverDetail); }
   if (tab === 'console'     && State.serverDetail) {
     _histLoaded = false; _cmdHistory = []; _histIdx = 0; _consoleBuffer = []; _consoleFilter = '';
+    // Init RCON player list for Minecraft servers
+    setTimeout(() => rconInitConsoleTab(State.serverDetail), 500);
     const cf = document.getElementById('console-filter-input'); if(cf) cf.value='';
     loadConsoleHistory(State.serverDetail);
   }

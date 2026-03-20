@@ -37,6 +37,7 @@ async function loadDashboard() {
   }
 
   document.getElementById('page-content').innerHTML = `
+    <div id="quota-widget"></div>
     <div class="grid grid-4">
       <div class="stat-card"><div class="stat-icon"><i data-lucide="server"></i></div><div class="stat-value">${servers.length}</div><div class="stat-label">Server gesamt</div><div class="stat-sub">${running} laufen</div></div>
       <div class="stat-card"><div class="stat-icon"><i data-lucide="check-circle"></i></div><div class="stat-value" style="color:var(--success)">${running}</div><div class="stat-label">Laufend</div><div class="stat-sub">${servers.length-running} offline</div></div>

@@ -4,6 +4,8 @@
 
 // ─── NETZWERK / PORTS ────────────────────────────────────────────────────────
 async function networkInit(serverId) {
+  // Load IP whitelist card
+  setTimeout(() => ipWhitelistInit(serverId), 100);
   const root = document.getElementById('network-root');
   if (!root) return;
   root.innerHTML = '<div class="empty"><div class="empty-icon spin"><i data-lucide="loader"></i></div></div>';
@@ -1357,3 +1359,882 @@ let _consoleFilter = '';
 let _consolePaused = false;
 let _consoleBuffer  = [];
 const MAX_CONSOLE_LINES = 2000;
+
+// ═══════════════════════════════════════════════════════════════
+// DATENBANKEN TAB
+// ═══════════════════════════════════════════════════════════════
+
+async function dbTabInit(serverId) {
+  const root = document.getElementById('databases-root');
+  if (!root) return;
+  root.innerHTML = '<div class="empty"><div class="empty-icon spin"><i data-lucide="loader-2"></i></div><p>Lade Datenbanken…</p></div>';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  const dbs = await API.get(`/servers/${serverId}/databases`).catch(() => []);
+
+  root.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+
+      <!-- Header Card -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="card-title" style="margin-bottom:4px"><i data-lucide="database"></i> Server-Datenbanken</div>
+            <div style="font-size:12px;color:var(--text3)">MySQL/MariaDB Datenbanken mit eigenem Benutzer pro Server</div>
+          </div>
+          <button class="btn btn-primary" onclick="dbCreate('${serverId}')">
+            <i data-lucide="plus"></i> Datenbank erstellen
+          </button>
+        </div>
+      </div>
+
+      <!-- DB List -->
+      <div id="db-list-container">
+        ${dbs.length === 0
+          ? `<div class="card">
+               <div class="empty" style="padding:32px">
+                 <div class="empty-icon"><i data-lucide="database"></i></div>
+                 <h3>Keine Datenbanken</h3>
+                 <p>Erstelle eine MySQL/MariaDB-Datenbank für diesen Server</p>
+                 <button class="btn btn-primary" style="margin-top:14px" onclick="dbCreate('${serverId}')">
+                   <i data-lucide="plus"></i> Datenbank erstellen
+                 </button>
+               </div>
+             </div>`
+          : dbs.map(d => dbCard(d, serverId)).join('')}
+      </div>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function dbCard(d, serverId) {
+  const phpUrl = d.phpmyadmin_url || '';
+  return `
+    <div class="card" id="db-card-${d.id}" style="border-left:3px solid var(--accent);padding:16px 20px">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="width:36px;height:36px;border-radius:8px;background:rgba(0,212,255,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i data-lucide="database" style="width:18px;height:18px;color:var(--accent)"></i>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            <code style="font-size:14px;font-weight:700;color:var(--text)">${esc(d.db_name)}</code>
+            ${phpUrl ? `<a href="${esc(phpUrl)}?db=${esc(d.db_name)}" target="_blank" rel="noopener"
+              class="btn btn-ghost btn-xs" title="In phpMyAdmin öffnen">
+              <i data-lucide="external-link"></i> phpMyAdmin
+            </a>` : ''}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:8px">
+            <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Benutzer</div>
+              <code style="font-size:12px;color:var(--text2)">${esc(d.db_user)}</code>
+            </div>
+            <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Host</div>
+              <code style="font-size:12px;color:var(--text2)">${esc(d.host)}:${d.port}</code>
+            </div>
+            <div style="background:var(--bg3);border-radius:6px;padding:8px 10px">
+              <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">JDBC-URL</div>
+              <code style="font-size:11px;color:var(--text3);word-break:break-all">${esc(d.jdbc_url)}</code>
+            </div>
+          </div>
+          ${d.has_password_visible
+            ? `<div class="info-msg" style="font-size:12px;padding:8px 12px;margin-bottom:6px">
+                 <i data-lucide="eye"></i> Passwort einmalig abrufbar —
+                 <button class="btn btn-ghost btn-xs" style="margin-left:4px" onclick="dbRevealPassword('${serverId}','${d.id}')">
+                   <i data-lucide="key"></i> Passwort anzeigen
+                 </button>
+               </div>`
+            : `<div style="font-size:11px;color:var(--text3);margin-bottom:6px">
+                 <i data-lucide="lock" style="width:11px;height:11px"></i>
+                 Passwort nicht mehr einsehbar — bei Bedarf rotieren
+               </div>`}
+          ${d.note ? `<div style="font-size:12px;color:var(--text3)">${esc(d.note)}</div>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-ghost btn-sm" onclick="dbRotatePassword('${serverId}','${d.id}','${esc(d.db_name)}')" title="Passwort rotieren">
+            <i data-lucide="refresh-cw"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="dbShowDetails('${serverId}','${d.id}')" title="Details">
+            <i data-lucide="info"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm text-danger" onclick="dbDelete('${serverId}','${d.id}','${esc(d.db_name)}')" title="Löschen">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function dbCreate(serverId) {
+  // Load available hosts
+  const hosts = await API.get('/admin/database-hosts').catch(() => []);
+
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="database"></i> Datenbank erstellen</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+
+    ${hosts.length === 0 ? `
+      <div class="warn-msg" style="margin-bottom:14px">
+        <i data-lucide="alert-triangle"></i>
+        Noch kein Datenbank-Host konfiguriert.
+        ${State.user.role === 'admin'
+          ? '<button class="btn btn-ghost btn-xs" onclick="closeModal();switchArea(\'admin\',true);navigate(\'admin-db-hosts\')">Jetzt einrichten</button>'
+          : 'Bitte den Administrator kontaktieren.'}
+      </div>` : ''}
+
+    <div class="grid grid-2" style="gap:12px;margin-bottom:14px">
+      <div class="form-group">
+        <label class="form-label">Datenbank-Name Suffix *</label>
+        <input id="db-suffix" class="form-input" placeholder="gamedata"
+          oninput="updateDbPreview('${serverId}')"/>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">
+          Ergebnis: <code id="db-name-preview" style="color:var(--accent)">nex_${serverId.replace(/-/g,'').slice(0,8)}_…</code>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Datenbank-Host</label>
+        <select id="db-host" class="form-input">
+          ${hosts.length > 0
+            ? hosts.map(h => `<option value="${h.id}" ${h.is_default?'selected':''}>${esc(h.name)} (${esc(h.host)}:${h.port})</option>`).join('')
+            : '<option value="">Standard (127.0.0.1:3306)</option>'}
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notiz (optional)</label>
+      <input id="db-note" class="form-input" placeholder="z.B. Spielerdaten, Statistiken…"/>
+    </div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="dbSubmitCreate('${serverId}')">
+        <i data-lucide="plus"></i> Erstellen
+      </button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function updateDbPreview(serverId) {
+  const suffix = document.getElementById('db-suffix')?.value || '';
+  const prefix = `nex_${serverId.replace(/-/g,'').slice(0,8)}_`;
+  const name   = (prefix + (suffix.replace(/[^a-zA-Z0-9_]/g,'_') || '…')).slice(0,64);
+  const el = document.getElementById('db-name-preview');
+  if (el) el.textContent = name;
+}
+
+async function dbSubmitCreate(serverId) {
+  const suffix  = document.getElementById('db-suffix')?.value?.trim();
+  const host_id = document.getElementById('db-host')?.value || null;
+  const note    = document.getElementById('db-note')?.value?.trim() || '';
+  const errEl   = document.getElementById('m-error');
+  if (!suffix) { errEl.textContent='Suffix erforderlich'; errEl.classList.remove('hidden'); return; }
+
+  try {
+    const res = await API.post(`/servers/${serverId}/databases`, {
+      db_name_suffix: suffix, host_id: host_id || null, note,
+    });
+    closeModal();
+    // Show the password immediately — only shown once
+    dbShowNewPassword(res, serverId);
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
+function dbShowNewPassword(db, serverId) {
+  const phpUrl = db.phpmyadmin_url || '';
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="check-circle-2" style="color:var(--accent3)"></i> Datenbank erstellt!</span>
+      <button class="modal-close" onclick="closeModal();dbTabInit('${serverId}')"><i data-lucide="x"></i></button>
+    </div>
+    <div class="warn-msg" style="margin-bottom:16px">
+      <i data-lucide="alert-triangle"></i>
+      <strong>Passwort jetzt kopieren!</strong> Es wird nach dem Schließen nicht mehr angezeigt.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+      ${[
+        ['Datenbank', db.db_name],
+        ['Benutzer', db.db_user],
+        ['Passwort', db.db_password_clear || db.db_password || '(rotieren um neues zu sehen)'],
+        ['Host', `${db.host}:${db.port}`],
+        ['JDBC-URL', db.jdbc_url],
+      ].map(([label, val]) => `
+        <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+          <div style="min-width:90px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">${label}</div>
+          <code style="flex:1;font-size:12px;word-break:break-all;color:var(--text)">${esc(val)}</code>
+          <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(val)}');toast('Kopiert','success')">
+            <i data-lucide="copy"></i>
+          </button>
+        </div>`).join('')}
+    </div>
+    ${phpUrl ? `<div class="info-msg" style="margin-bottom:12px;font-size:12px">
+      <a href="${esc(phpUrl)}?db=${esc(db.db_name)}" target="_blank" rel="noopener" style="color:var(--accent)">
+        <i data-lucide="external-link"></i> In phpMyAdmin öffnen
+      </a>
+    </div>` : ''}
+    ${db.warning ? `<div class="warn-msg" style="font-size:12px">${esc(db.warning)}</div>` : ''}
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal();dbTabInit('${serverId}')">
+        <i data-lucide="check"></i> Verstanden — Seite aktualisieren
+      </button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function dbRevealPassword(serverId, dbId) {
+  try {
+    const res = await API.get(`/servers/${serverId}/databases/${dbId}/password`);
+    showModal(`
+      <div class="modal-title">
+        <span><i data-lucide="key"></i> Datenbankpasswort</span>
+        <button class="modal-close" onclick="closeModal();dbTabInit('${serverId}')"><i data-lucide="x"></i></button>
+      </div>
+      <div class="warn-msg" style="margin-bottom:14px">
+        Nach dem Schließen kann das Passwort nicht mehr angezeigt werden. Bitte jetzt kopieren oder sicher speichern.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+        ${[['Datenbank', res.db_name],['Benutzer', res.db_user],['Passwort', res.password]].map(([l,v]) => `
+          <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+            <div style="min-width:80px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">${l}</div>
+            <code style="flex:1;font-size:13px;word-break:break-all">${esc(v)}</code>
+            <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(v)}');toast('Kopiert','success')"><i data-lucide="copy"></i></button>
+          </div>`).join('')}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeModal();dbTabInit('${serverId}')">Schließen</button>
+      </div>`, true);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch(e) { toast(e.message, 'error'); dbTabInit(serverId); }
+}
+
+async function dbRotatePassword(serverId, dbId, dbName) {
+  if (!confirm(`Passwort für "${dbName}" wirklich rotieren?\n\nDas alte Passwort wird ungültig — alle Verbindungen müssen aktualisiert werden.`)) return;
+  try {
+    const res = await API.post(`/servers/${serverId}/databases/${dbId}/rotate-password`);
+    showModal(`
+      <div class="modal-title">
+        <span><i data-lucide="refresh-cw"></i> Passwort rotiert</span>
+        <button class="modal-close" onclick="closeModal();dbTabInit('${serverId}')"><i data-lucide="x"></i></button>
+      </div>
+      <div class="warn-msg" style="margin-bottom:14px">Neues Passwort jetzt kopieren — danach nicht mehr einsehbar.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+        ${[['Datenbank', res.db_name],['Benutzer', res.db_user],['Neues Passwort', res.password]].map(([l,v]) => `
+          <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+            <div style="min-width:80px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">${l}</div>
+            <code style="flex:1;font-size:13px;word-break:break-all">${esc(v)}</code>
+            <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(v)}');toast('Kopiert','success')"><i data-lucide="copy"></i></button>
+          </div>`).join('')}
+      </div>
+      ${res.warning ? `<div class="warn-msg" style="font-size:12px">${esc(res.warning)}</div>` : ''}
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeModal();dbTabInit('${serverId}')">Schließen</button>
+      </div>`, true);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function dbShowDetails(serverId, dbId) {
+  const d = await API.get(`/servers/${serverId}/databases/${dbId}`).catch(() => null);
+  if (!d) { toast('Datenbank nicht gefunden', 'error'); return; }
+  const phpUrl = d.phpmyadmin_url || '';
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="database"></i> ${esc(d.db_name)}</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      ${[
+        ['Datenbank', d.db_name],
+        ['Benutzer', d.db_user],
+        ['Host', `${d.host}:${d.port}`],
+        ['JDBC-URL', d.jdbc_url],
+        ['PHP DSN', `mysql:host=${d.host};port=${d.port};dbname=${d.db_name}`],
+        ['Erstellt', new Date(d.created_at).toLocaleString('de-DE')],
+      ].map(([l,v]) => `
+        <div style="background:var(--bg3);border-radius:8px;padding:8px 12px;display:flex;align-items:center;gap:10px">
+          <div style="min-width:80px;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">${l}</div>
+          <code style="flex:1;font-size:12px;word-break:break-all;color:var(--text2)">${esc(v)}</code>
+          <button class="btn btn-ghost btn-xs" onclick="navigator.clipboard.writeText('${esc(v)}');toast('Kopiert','success')"><i data-lucide="copy"></i></button>
+        </div>`).join('')}
+    </div>
+    ${phpUrl ? `<div style="margin-bottom:10px">
+      <a href="${esc(phpUrl)}?db=${esc(d.db_name)}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">
+        <i data-lucide="external-link"></i> In phpMyAdmin öffnen
+      </a>
+    </div>` : ''}
+    ${d.note ? `<div style="font-size:12px;color:var(--text3);margin-bottom:10px">${esc(d.note)}</div>` : ''}
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" onclick="closeModal();dbDelete('${serverId}','${d.id}','${esc(d.db_name)}')">
+        <i data-lucide="trash-2"></i> Löschen
+      </button>
+      <button class="btn btn-ghost" onclick="closeModal();dbRotatePassword('${serverId}','${d.id}','${esc(d.db_name)}')">
+        <i data-lucide="refresh-cw"></i> Passwort rotieren
+      </button>
+      <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function dbDelete(serverId, dbId, dbName) {
+  if (!confirm(`Datenbank "${dbName}" wirklich löschen?\n\nAlle Daten gehen unwiederbringlich verloren!`)) return;
+  try {
+    const res = await API.delete(`/servers/${serverId}/databases/${dbId}`);
+    toast(`Datenbank "${dbName}" gelöscht`, 'success');
+    if (res.warning) toast(res.warning, 'warn');
+    dbTabInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// IP-WHITELIST TAB (in Netzwerk / Info Tab eingebettet)
+// ═══════════════════════════════════════════════════════════════
+
+async function ipWhitelistInit(serverId) {
+  let container = document.getElementById('ip-whitelist-container');
+  if (!container) {
+    // Create container if it doesn't exist yet (network tab)
+    container = document.createElement('div');
+    container.id = 'ip-whitelist-container';
+    const root = document.getElementById('network-root');
+    if (root) root.appendChild(container);
+    else return;
+  }
+
+  const data = await API.get(`/servers/${serverId}/ip-whitelist`).catch(() => ({ allowed_ips: [], enabled: false }));
+  const list = data.allowed_ips || [];
+
+  container.innerHTML = `
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-title"><i data-lucide="shield"></i> IP-Whitelist</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--text3)">${list.length === 0 ? 'Deaktiviert (alle IPs erlaubt)' : list.length + ' Einträge'}</span>
+          <button class="btn btn-primary btn-sm" onclick="ipWhitelistAdd('${serverId}')">
+            <i data-lucide="plus"></i> IP hinzufügen
+          </button>
+        </div>
+      </div>
+      ${list.length === 0
+        ? `<div style="font-size:13px;color:var(--text3);padding:8px 0">
+             <i data-lucide="shield-off" style="width:14px;height:14px"></i>
+             Keine Einschränkungen — alle IP-Adressen haben Zugriff.<br>
+             <span style="font-size:12px">Füge IP-Adressen hinzu um den Zugriff einzuschränken (IPv4, IPv6, CIDR-Notation).</span>
+           </div>`
+        : `<div style="display:flex;flex-direction:column;gap:6px">
+             ${list.map(e => {
+               const ip    = typeof e === 'object' ? e.ip : e;
+               const label = typeof e === 'object' ? e.label : '';
+               return `
+                 <div style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:8px;padding:8px 12px">
+                   <i data-lucide="shield-check" style="width:14px;height:14px;color:var(--accent3);flex-shrink:0"></i>
+                   <code style="flex:1;font-size:13px">${esc(ip)}</code>
+                   ${label ? `<span style="font-size:11px;color:var(--text3)">${esc(label)}</span>` : ''}
+                   <button class="btn btn-ghost btn-xs text-danger"
+                     onclick="ipWhitelistRemove('${serverId}','${esc(ip)}')">
+                     <i data-lucide="x"></i>
+                   </button>
+                 </div>`;
+             }).join('')}
+           </div>`}
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function ipWhitelistAdd(serverId) {
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="shield-plus"></i> IP zur Whitelist hinzufügen</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    <div class="info-msg" style="margin-bottom:14px;font-size:12px">
+      Erlaubte Formate: <code>192.168.1.1</code> · <code>192.168.0.0/24</code> · <code>2001:db8::1</code> · <code>*</code> (alle)
+    </div>
+    <div class="grid grid-2" style="gap:10px;margin-bottom:14px">
+      <div class="form-group">
+        <label class="form-label">IP-Adresse / CIDR *</label>
+        <input id="wl-ip" class="form-input" placeholder="192.168.1.0/24" autofocus/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Beschreibung (optional)</label>
+        <input id="wl-label" class="form-input" placeholder="Büro-Netzwerk"/>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('wl-ip').value=''">
+        Aktuelle IP einfügen
+      </button>
+    </div>
+    <div id="m-error" class="error-msg hidden"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="ipWhitelistSubmitAdd('${serverId}')">
+        <i data-lucide="shield-plus"></i> Hinzufügen
+      </button>
+    </div>`);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function ipWhitelistSubmitAdd(serverId) {
+  const ip    = document.getElementById('wl-ip')?.value?.trim();
+  const label = document.getElementById('wl-label')?.value?.trim();
+  const errEl = document.getElementById('m-error');
+  if (!ip) { errEl.textContent = 'IP-Adresse erforderlich'; errEl.classList.remove('hidden'); return; }
+  try {
+    await API.post(`/servers/${serverId}/ip-whitelist`, { ip, label });
+    toast('IP hinzugefügt', 'success');
+    closeModal();
+    ipWhitelistInit(serverId);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function ipWhitelistRemove(serverId, ip) {
+  if (!confirm(`IP "${ip}" aus der Whitelist entfernen?`)) return;
+  try {
+    await API.delete(`/servers/${serverId}/ip-whitelist/${encodeURIComponent(ip)}`);
+    toast('IP entfernt', 'success');
+    ipWhitelistInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO-SLEEP (in Wartungs-Tab eingebettet)
+// ═══════════════════════════════════════════════════════════════
+
+async function autoSleepInit(serverId) {
+  let container = document.getElementById('auto-sleep-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'auto-sleep-container';
+    const root = document.getElementById('maintenance-root');
+    if (root) root.appendChild(container);
+    else return;
+  }
+
+  const srv = await API.get(`/servers/${serverId}`).catch(() => null);
+  if (!srv) return;
+
+  const enabled  = !!srv.auto_sleep_enabled;
+  const minutes  = srv.auto_sleep_minutes || 30;
+  const lastAct  = srv.last_activity_at ? new Date(srv.last_activity_at).toLocaleString('de-DE') : 'Nie';
+
+  container.innerHTML = `
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-title"><i data-lucide="moon"></i> Auto-Sleep</div>
+        <span style="font-size:11px;padding:3px 8px;border-radius:8px;
+          background:${enabled?'rgba(0,245,160,.1)':'rgba(100,116,139,.1)'};
+          color:${enabled?'var(--accent3)':'var(--text3)'};
+          border:1px solid ${enabled?'rgba(0,245,160,.2)':'rgba(100,116,139,.2)'}">
+          ${enabled ? 'Aktiv' : 'Deaktiviert'}
+        </span>
+      </div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+        Stoppt den Server automatisch nach einer definierten Inaktivitätszeit.
+        Beim nächsten Besuch der Server-Seite wird er automatisch wieder gestartet.
+      </p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <label class="toggle-wrap" id="sleep-toggle-wrap">
+          <input type="checkbox" id="sleep-enabled" class="toggle-cb" ${enabled?'checked':''}
+            onchange="autoSleepToggle('${serverId}')"/>
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        </label>
+        <span style="font-size:13px">Auto-Sleep aktivieren</span>
+      </div>
+      <div id="sleep-config" style="${enabled?'':'opacity:.5;pointer-events:none'}">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div class="form-group">
+            <label class="form-label">Inaktivität nach</label>
+            <select id="sleep-minutes" class="form-input" onchange="autoSleepSave('${serverId}')">
+              ${[5,10,15,20,30,45,60,90,120,240].map(m =>
+                `<option value="${m}" ${minutes===m?'selected':''}>${m} Minuten</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Letzte Aktivität</label>
+            <div style="padding:10px 0;font-size:13px;color:var(--text2)">${lastAct}</div>
+          </div>
+        </div>
+        <div class="info-msg" style="font-size:12px">
+          <i data-lucide="info"></i>
+          Aktivität wird registriert durch: Konsolen-Verbindungen, Befehlseingaben, Datei-Operationen, Power-Actions.
+        </div>
+      </div>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function autoSleepToggle(serverId) {
+  const enabled = document.getElementById('sleep-enabled')?.checked;
+  const cfg = document.getElementById('sleep-config');
+  if (cfg) cfg.style.opacity = enabled ? '1' : '0.5';
+  if (cfg) cfg.style.pointerEvents = enabled ? 'auto' : 'none';
+  autoSleepSave(serverId);
+}
+
+async function autoSleepSave(serverId) {
+  const enabled = document.getElementById('sleep-enabled')?.checked || false;
+  const minutes = parseInt(document.getElementById('sleep-minutes')?.value) || 30;
+  try {
+    await API.patch(`/servers/${serverId}`, { auto_sleep_enabled: enabled ? 1 : 0, auto_sleep_minutes: minutes });
+    toast(enabled ? `Auto-Sleep: ${minutes} Min` : 'Auto-Sleep deaktiviert', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// RCON-INTEGRATION — Player-Liste + Quick-Commands
+// ═══════════════════════════════════════════════════════════════
+
+const RCON_QUICK_COMMANDS = [
+  { label: 'Spielerliste',   cmd: 'list',                   icon: 'users' },
+  { label: 'Save-All',       cmd: 'save-all',               icon: 'save' },
+  { label: 'Say (Nachricht)',cmd: 'say ',                   icon: 'message-square', prompt: true },
+  { label: 'OP geben',       cmd: 'op ',                    icon: 'shield', prompt: true },
+  { label: 'Kick',           cmd: 'kick ',                  icon: 'user-minus', prompt: true },
+  { label: 'Ban',            cmd: 'ban ',                   icon: 'user-x', prompt: true },
+  { label: 'Pardon',         cmd: 'pardon ',                icon: 'user-check', prompt: true },
+  { label: 'Gamemode',       cmd: 'gamemode survival ',     icon: 'gamepad-2', prompt: true },
+  { label: 'Wetter löschen', cmd: 'weather clear',          icon: 'sun' },
+  { label: 'Zeit Tag',       cmd: 'time set day',           icon: 'clock' },
+  { label: 'Stop',           cmd: 'stop',                   icon: 'square', danger: true },
+];
+
+let _rconAutoRefresh = null;
+let _rconServerId    = null;
+let _rconIsMinecraft = false;
+
+async function rconInitConsoleTab(serverId) {
+  _rconServerId = serverId;
+  const srv = State.server || await API.get(`/servers/${serverId}`).catch(() => null);
+  if (!srv) return;
+
+  const isMinecraft = (srv.image || '').toLowerCase().includes('itzg') ||
+                      (srv.image || '').toLowerCase().includes('minecraft') ||
+                      (srv.image || '').toLowerCase().includes('minecraft-server');
+  _rconIsMinecraft = isMinecraft;
+
+  // Show player card for Minecraft, hide for others
+  const playerCard = document.getElementById('rcon-player-card');
+  const quickCard  = document.getElementById('rcon-quick-card');
+
+  // Show if minecraft image or if server has port 25575 mapped
+  const hasMcPorts = JSON.parse(srv.ports||'[]').some(p=>p.host===25575||p.container===25575);
+  const showRcon   = isMinecraft || hasMcPorts;
+
+  if (!showRcon || srv.status !== 'running') {
+    if (playerCard) playerCard.style.display = 'none';
+    if (quickCard)  quickCard.style.display  = 'none';
+    return;
+  }
+
+  if (playerCard) playerCard.style.display = '';
+  if (quickCard)  quickCard.style.display  = '';
+
+  // Build quick commands
+  const quickBtns = document.getElementById('rcon-quick-btns');
+  if (quickBtns) {
+    quickBtns.innerHTML = RCON_QUICK_COMMANDS.map(cmd => `
+      <button class="btn btn-ghost btn-xs" style="justify-content:flex-start;text-align:left;${cmd.danger?'color:var(--danger)':''}"
+        onclick="rconQuickCommand('${serverId}','${esc(cmd.cmd)}',${!!cmd.prompt})">
+        <i data-lucide="${cmd.icon}" style="width:12px;height:12px;flex-shrink:0"></i>
+        ${esc(cmd.label)}
+      </button>`).join('');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  // Load players immediately
+  await rconRefreshPlayers(serverId);
+
+  // Auto-refresh every 30s
+  if (_rconAutoRefresh) clearInterval(_rconAutoRefresh);
+  _rconAutoRefresh = setInterval(() => {
+    if (document.getElementById('rcon-player-card')?.style.display !== 'none') {
+      rconRefreshPlayers(serverId);
+    }
+  }, 30_000);
+}
+
+async function rconRefreshPlayers(serverId) {
+  const listEl  = document.getElementById('rcon-player-list');
+  const countEl = document.getElementById('rcon-player-count');
+  if (!listEl) return;
+
+  try {
+    const data = await API.get(`/servers/${serverId}/rcon/players`);
+
+    if (!data.success || data.offline) {
+      const needsPw = data.needs_password;
+      listEl.innerHTML = `
+        <div style="font-size:12px;color:var(--text3)">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:${needsPw?'6px':'0'}">
+            <i data-lucide="${needsPw?'key':'wifi-off'}" style="width:12px;height:12px;color:${needsPw?'var(--warn)':'var(--text3)'}"></i>
+            ${needsPw ? '<span style="color:var(--warn)">Passwort fehlt</span>' : (data.error ? 'RCON nicht erreichbar' : 'Server offline')}
+          </div>
+          ${needsPw ? `<div style="font-size:11px;color:var(--text3);line-height:1.4">
+            Setze <code style="background:var(--bg3);padding:1px 4px;border-radius:3px">RCON_PASSWORD</code> in den Server ENV-Variablen
+            oder konfiguriere RCON unter <button class="btn btn-ghost btn-xs" style="font-size:10px;padding:1px 6px" onclick="detailTab('maintenance',document.querySelector('[onclick*=maintenance]'))">Wartung</button>.
+          </div>` : ''}
+          ${!needsPw && data.error ? `<div style="font-size:11px;margin-top:3px;color:var(--text3)">${esc(data.error.slice(0,80))}</div>` : ''}
+        </div>`;
+      if (countEl) countEl.innerHTML = '';
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+      return;
+    }
+
+    if (data.players.length === 0) {
+      listEl.innerHTML = `<div style="font-size:12px;color:var(--text3)">
+        <i data-lucide="users" style="width:12px;height:12px"></i>
+        Keine Spieler online
+      </div>`;
+    } else {
+      listEl.innerHTML = `<div style="display:flex;flex-direction:column;gap:4px">
+        ${data.players.map(name => `
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:var(--bg3);border-radius:6px"
+            title="Rechtsklick für Aktionen" oncontextmenu="rconPlayerMenu(event,'${serverId}','${esc(name)}');return false">
+            <div style="width:20px;height:20px;border-radius:4px;background:linear-gradient(135deg,var(--accent),var(--accent3));display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#000;flex-shrink:0">${esc(name[0].toUpperCase())}</div>
+            <span style="font-size:12px;font-family:var(--mono)">${esc(name)}</span>
+            <div style="margin-left:auto;display:flex;gap:3px">
+              <button class="btn btn-ghost btn-xs" style="padding:2px 5px" onclick="rconPlayerAction('${serverId}','msg','${esc(name)}')" title="Nachricht senden">
+                <i data-lucide="message-square" style="width:10px;height:10px"></i>
+              </button>
+              <button class="btn btn-ghost btn-xs" style="padding:2px 5px;color:var(--danger)" onclick="rconPlayerAction('${serverId}','kick','${esc(name)}')" title="Kicken">
+                <i data-lucide="user-minus" style="width:10px;height:10px"></i>
+              </button>
+            </div>
+          </div>`).join('')}
+      </div>`;
+    }
+
+    if (countEl) {
+      const pct = data.max > 0 ? Math.round(data.online / data.max * 100) : 0;
+      countEl.innerHTML = `
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="color:var(--accent3)">${data.online} online</span>
+          <span>/ ${data.max} max</span>
+        </div>
+        <div style="background:var(--bg3);border-radius:3px;height:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${pct>=80?'var(--danger)':pct>=50?'var(--warn)':'var(--accent3)'};border-radius:3px;transition:.3s"></div>
+        </div>`;
+    }
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  } catch (e) {
+    if (listEl) listEl.innerHTML = `<div style="font-size:12px;color:var(--text3)">
+      <i data-lucide="x-circle" style="width:12px;height:12px"></i> ${esc(e.message)}
+    </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+}
+
+async function rconQuickCommand(serverId, cmd, needsInput) {
+  let finalCmd = cmd.trim();
+  if (needsInput || cmd.endsWith(' ')) {
+    const input = prompt(`Argument für "${cmd.trim()}":`, '');
+    if (input === null) return;
+    finalCmd = cmd + input.trim();
+  }
+
+  // Befehl auch in die Console-Input schreiben für visuelle Rückmeldung
+  const inputEl = document.getElementById('console-input');
+  if (inputEl) inputEl.value = finalCmd;
+
+  try {
+    const res = await API.post(`/servers/${serverId}/rcon/command`, { command: finalCmd });
+    if (res.output && res.output !== '(kein Output)') {
+      toast(res.output.slice(0, 120), 'success');
+    } else {
+      toast(`${finalCmd} → OK`, 'success');
+    }
+    // Spielerliste nach bestimmten Befehlen aktualisieren
+    if (['list','kick','ban','pardon'].some(c => finalCmd.startsWith(c))) {
+      setTimeout(() => rconRefreshPlayers(serverId), 800);
+    }
+  } catch(e) {
+    toast(`RCON Fehler: ${e.message}`, 'error');
+  }
+}
+
+async function rconPlayerAction(serverId, action, playerName) {
+  switch (action) {
+    case 'kick': {
+      const reason = prompt(`Kick-Grund für ${playerName}:`, 'Kicked by admin') || 'Kicked by admin';
+      await rconQuickCommand(serverId, `kick ${playerName} ${reason}`, false);
+      break;
+    }
+    case 'msg': {
+      const msg = prompt(`Nachricht an ${playerName}:`, '');
+      if (!msg) return;
+      await rconQuickCommand(serverId, `msg ${playerName} ${msg}`, false);
+      break;
+    }
+    case 'ban': {
+      if (!confirm(`${playerName} bannen?`)) return;
+      await rconQuickCommand(serverId, `ban ${playerName}`, false);
+      break;
+    }
+    case 'op': {
+      await rconQuickCommand(serverId, `op ${playerName}`, false);
+      break;
+    }
+  }
+}
+
+function rconPlayerMenu(event, serverId, playerName) {
+  event.preventDefault();
+  // Kontextmenü
+  const existing = document.getElementById('rcon-ctx-menu');
+  if (existing) existing.remove();
+
+  const menu = document.createElement('div');
+  menu.id = 'rcon-ctx-menu';
+  menu.style.cssText = `position:fixed;left:${event.clientX}px;top:${event.clientY}px;background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:4px;z-index:9999;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.4)`;
+
+  const actions = [
+    { label: 'Nachricht senden', icon: 'message-square', action: 'msg' },
+    { label: 'Teleportieren',    icon: 'map-pin',         action: 'tp' },
+    { label: 'OP geben',         icon: 'shield',           action: 'op' },
+    { label: 'Kick',             icon: 'user-minus',       action: 'kick', danger: true },
+    { label: 'Ban',              icon: 'user-x',           action: 'ban',  danger: true },
+  ];
+
+  menu.innerHTML = `
+    <div style="padding:6px 10px;font-size:11px;font-weight:700;color:var(--text3);border-bottom:1px solid var(--border);margin-bottom:4px">${esc(playerName)}</div>
+    ${actions.map(a => `
+      <div class="nav-item" style="padding:6px 10px;border-radius:4px;cursor:pointer;${a.danger?'color:var(--danger)':''}"
+        onclick="document.getElementById('rcon-ctx-menu').remove();rconPlayerAction('${serverId}','${a.action}','${esc(playerName)}')">
+        <i data-lucide="${a.icon}" style="width:13px;height:13px"></i> ${esc(a.label)}
+      </div>`).join('')}`;
+
+  document.body.appendChild(menu);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener('click', function closeMenu() {
+      menu.remove();
+      document.removeEventListener('click', closeMenu);
+    }, { once: true });
+  }, 10);
+}
+
+// ── RCON-Konfiguration im Info/Wartungs-Tab ────────────────────────────────────
+async function rconConfigInit(serverId) {
+  let container = document.getElementById('rcon-config-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'rcon-config-container';
+    const root = document.getElementById('maintenance-root');
+    if (root) root.appendChild(container);
+    else return;
+  }
+
+  const status = await API.get(`/servers/${serverId}/rcon/status`).catch(() => null);
+  if (!status) { container.innerHTML = ''; return; }
+
+  // Show for all servers — RCON works with any game server supporting Source RCON protocol
+
+  const cfg = status.config || {};
+  container.innerHTML = `
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="card-title"><i data-lucide="plug-zap"></i> RCON-Konfiguration</div>
+        <span style="font-size:11px;padding:2px 8px;border-radius:8px;
+          background:${status.auto_detected?.rcon_password?'rgba(0,245,160,.1)':'rgba(245,158,11,.1)'};
+          color:${status.auto_detected?.rcon_password?'var(--accent3)':'var(--warn)'};
+          border:1px solid ${status.auto_detected?.rcon_password?'rgba(0,245,160,.2)':'rgba(245,158,11,.2)'}">
+          ${status.auto_detected?.rcon_password ? 'Auto-Konfiguriert' : 'Manuell einrichten'}
+        </span>
+      </div>
+      <div class="grid grid-2" style="gap:12px;margin-bottom:12px">
+        <div class="form-group">
+          <label class="form-label">RCON Host</label>
+          <input id="rcon-host" class="form-input" value="${esc(cfg.rcon_host||'127.0.0.1')}" placeholder="127.0.0.1"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">RCON Port</label>
+          <input id="rcon-port" class="form-input" type="number" value="${cfg.rcon_port||25575}" placeholder="25575"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">RCON Passwort</label>
+        <input id="rcon-pass" class="form-input" type="password"
+          placeholder="${cfg._password_set ? '(gesetzt — leer lassen)' : status.auto_detected?.rcon_password ? '(aus ENV erkannt)' : 'Passwort eingeben…'}"/>
+        ${status.auto_detected?.rcon_password
+          ? `<div style="font-size:11px;color:var(--accent3);margin-top:3px">
+               <i data-lucide="check-circle-2" style="width:10px;height:10px"></i>
+               RCON_PASSWORD aus Server-ENV erkannt — wird automatisch verwendet.
+               <button class="btn btn-ghost btn-xs" style="margin-left:4px;font-size:10px" onclick="rconSaveDetectedConfig('${serverId}')">Jetzt speichern</button>
+             </div>`
+          : `<div style="font-size:11px;color:var(--warn);margin-top:3px">
+               <i data-lucide="alert-triangle" style="width:10px;height:10px"></i>
+               Kein RCON_PASSWORD in ENV — manuell eingeben oder in Konfig-Tab setzen.
+             </div>`}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="rconTestConnection('${serverId}')">
+          <i data-lucide="plug"></i> Verbindung testen
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="rconSaveConfig('${serverId}')">
+          <i data-lucide="save"></i> Speichern
+        </button>
+      </div>
+      <div id="rcon-test-result" style="margin-top:8px"></div>
+    </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function rconSaveConfig(serverId) {
+  const host = document.getElementById('rcon-host')?.value?.trim();
+  const port = document.getElementById('rcon-port')?.value;
+  const pass = document.getElementById('rcon-pass')?.value;
+  if (!host) { toast('Host erforderlich', 'error'); return; }
+  try {
+    await API.put(`/servers/${serverId}/rcon/config`, { rcon_host: host, rcon_port: parseInt(port)||25575, rcon_password: pass });
+    toast('RCON-Konfiguration gespeichert', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function rconTestConnection(serverId) {
+  const host = document.getElementById('rcon-host')?.value?.trim() || '127.0.0.1';
+  const port = parseInt(document.getElementById('rcon-port')?.value) || 25575;
+  const pass = document.getElementById('rcon-pass')?.value || '';
+  const resEl = document.getElementById('rcon-test-result');
+  if (resEl) resEl.innerHTML = '<div class="info-msg" style="font-size:12px"><i data-lucide="loader-2" class="spin"></i> Verbinde…</div>';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  try {
+    const res = await API.post(`/servers/${serverId}/rcon/connect`, { rcon_host: host, rcon_port: port, rcon_password: pass });
+    if (resEl) { resEl.innerHTML = `<div class="success-msg" style="font-size:12px"><i data-lucide="check-circle-2"></i> Verbunden! (${host}:${port})</div>`; }
+    // Refresh players after successful connect
+    setTimeout(() => rconRefreshPlayers(serverId), 200);
+  } catch(e) {
+    if (resEl) resEl.innerHTML = `<div class="error-msg" style="font-size:12px"><i data-lucide="x-circle"></i> ${esc(e.message)}</div>`;
+  }
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+
+// ── RCON: Auto-erkanntes Passwort aus ENV sofort speichern ────────────────────
+async function rconSaveDetectedConfig(serverId) {
+  const status = await API.get(`/servers/${serverId}/rcon/status`).catch(() => null);
+  if (!status?.auto_detected?.rcon_password) {
+    toast('Kein Passwort auto-erkannt', 'error'); return;
+  }
+  const d = status.auto_detected;
+  try {
+    await API.put(`/servers/${serverId}/rcon/config`, {
+      rcon_host:     d.rcon_host || '127.0.0.1',
+      rcon_port:     d.rcon_port || 25575,
+      rcon_password: d.rcon_password,
+    });
+    toast('RCON-Konfiguration aus ENV gespeichert', 'success');
+    rconConfigInit(serverId);
+    setTimeout(() => rconRefreshPlayers(serverId), 500);
+  } catch(e) { toast(e.message, 'error'); }
+}
+

@@ -51,6 +51,7 @@ const scheduleRouter  = require('./routes/schedule');
 const subusersRouter  = require('./routes/subusers');
 const backupsRouter   = require('./routes/backups');
 const { startScheduler } = require('./src/core/scheduler');
+const { autoSleepTick }   = require('./src/core/auto-sleep');
 const { startSftpServer } = require('./src/sftp/sftp-server');
 const notificationsRouter = require('./routes/notifications');
 const { smtpRouter }      = require('./routes/notifications');
@@ -71,6 +72,10 @@ const docsRouter          = require('./routes/docs');
 const pterodactylRouter   = require('./routes/pterodactyl');
 const favoritesRouter     = require('./routes/favorites');
 const broadcastRouter     = require('./routes/broadcast');
+const { serverDbRouter, adminHostRouter: dbHostRouter } = require('./routes/databases');
+const rconRouter          = require('./routes/rcon');
+const quotasRouter        = require('./routes/quotas');
+const ipWhitelistRouter   = require('./routes/ip-whitelist');
 const { startResourceMonitor, setBroadcast } = require('./src/core/resource-limits');
 const filesRouter      = require('./routes/files');
 const modsRouter       = require('./routes/mods');
@@ -121,6 +126,12 @@ app.use('/api/docs',                           docsRouter);     // Swagger / Ope
 app.use('/api/ptero',                          pterodactylRouter); // Pterodactyl Import Engine
 app.use('/api/servers',                        favoritesRouter);   // Favoriten + Console Aliases
 app.use('/api/servers',                        broadcastRouter);   // Server Broadcast
+app.use('/api/servers/:serverId/databases',     serverDbRouter);
+app.use('/api/servers/:id/rcon',               rconRouter);        // RCON-Integration    // Server-Datenbanken
+app.use('/api/admin/database-hosts',           dbHostRouter);      // DB-Host-Verwaltung (Admin)
+app.use('/api/admin',                          quotasRouter);      // User-Quotas (Admin)
+app.use('/api',                                quotasRouter);      // /api/account/quota
+app.use('/api/servers/:id/ip-whitelist',       ipWhitelistRouter); // IP-Whitelist pro Server
 app.use('/api/admin/metrics',                  metricsRouter);  // Prometheus token management
 app.use('/metrics',                            metricsRouter);  // Prometheus scrape endpoint
 app.use('/api/admin/oauth',                    oauthRouter);    // OAuth admin config

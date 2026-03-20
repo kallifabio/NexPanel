@@ -114,6 +114,11 @@ function handleWsMsg(msg) {
   if (msg.type === 'node.info' && State.nodes[msg.node_id]) { State.nodes[msg.node_id].system = msg.system; return; }
   if (msg.type === 'server.status')  {
     document.querySelectorAll(`[data-sid="${msg.server_id}"]`).forEach(el => el.className = `server-status-dot ${msg.status}`);
+    // Sync status in State._allServers for filter accuracy
+    if (State._allServers) {
+      const srv = State._allServers.find(s => s.id === msg.server_id);
+      if (srv) srv.status = msg.status;
+    }
   }
 }
 

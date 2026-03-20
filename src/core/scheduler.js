@@ -7,6 +7,8 @@
 const { db } = require('./db');
 const { executeTask } = require('../../routes/schedule');
 const { autoBackupTick } = require('../mods/auto-backup-scheduler');
+const { autoSleepTick }  = require('./auto-sleep');
+const { announceScheduleTick } = require('../../routes/broadcast');
 
 let _interval = null;
 
@@ -87,6 +89,8 @@ function startScheduler() {
     _interval = setInterval(() => {
     tick();
     autoBackupTick().catch(() => {});
+    autoSleepTick().catch(() => {});
+    announceScheduleTick().catch(() => {});
     if (new Date().getMinutes() % 10 === 0) autoUpdateTick().catch(()=>{});
   }, 60_000);
   }, msToNextMinute);
