@@ -134,6 +134,11 @@ async function runAutoBackup(schedule, srv) {
       { Größe: sizeMb + ' MB' }
     ).catch(() => {});
 
+    // Reset failure counter on success
+    db.prepare(`UPDATE backup_schedules
+      SET consecutive_failures=0, last_success_at=datetime('now')
+      WHERE server_id=?`).run(srv.id);
+
     console.log(`[auto-backup] ✅ "${backupName}" für Server ${srv.id} (${sizeMb} MB)`);
 
   } catch (e) {
@@ -148,7 +153,58 @@ async function runAutoBackup(schedule, srv) {
     notify(srv.id, 'backup_failed',
       `Auto-Backup "${backupName}" fehlgeschlagen: ${errMsg}`, {}
     ).catch(() => {});
+
+    // Email on failure
+    if (schedule.notify_on_fail && schedule.notify_email) {
+      sendBackupFailEmail(schedule.notify_email, srv.name, backupName, errMsg).catch(() => {});
+    }
+
+    // Track consecutive failures
+    db.prepare(`UPDATE backup_schedules
+      SET consecutive_failures = COALESCE(consecutive_failures,0) + 1
+      WHERE server_id=?`).run(srv.id);
   }
+}
+
+// ─── E-Mail bei Backup-Fehler ──────────────────────────────────────────────────
+async function sendBackupFailEmail(email, serverName, backupName, error) {
+  const nodemailer = (() => { try { return require('nodemailer'); } catch { return null; } })();
+  if (!nodemailer) return;
+  const smtpHost = process.env.SMTP_HOST;
+  if (!smtpHost || !email) return;
+
+  const transport = nodemailer.createTransport({
+    host:   smtpHost,
+    port:   parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_PORT === '465',
+    auth:   process.env.SMTP_USER ? {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS || '',
+    } : undefined,
+  });
+
+  await transport.sendMail({
+    from:    process.env.SMTP_FROM || 'NexPanel <nexpanel@localhost>',
+    to:      email,
+    subject: `[NexPanel] ❌ Backup fehlgeschlagen: ${serverName}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px">
+        <h2 style="color:#ff3b5c">Auto-Backup fehlgeschlagen</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:14px">
+          <tr><td style="padding:6px 0;color:#666">Server</td><td><strong>${serverName}</strong></td></tr>
+          <tr><td style="padding:6px 0;color:#666">Backup-Name</td><td>${backupName}</td></tr>
+          <tr><td style="padding:6px 0;color:#666">Zeitpunkt</td><td>${new Date().toLocaleString('de-DE')}</td></tr>
+          <tr><td style="padding:6px 0;color:#666;vertical-align:top">Fehler</td>
+              <td style="color:#cc2244;font-family:monospace;font-size:12px">${error}</td></tr>
+        </table>
+        <p style="color:#666;font-size:13px;margin-top:16px">
+          Prüfe den Server-Status und die Backup-Konfiguration in NexPanel.<br>
+          <a href="#">NexPanel öffnen</a>
+        </p>
+      </div>`,
+    text: `Auto-Backup fehlgeschlagen\nServer: ${serverName}\nBackup: ${backupName}\nFehler: ${error}\n`,
+  });
+  console.log(`[auto-backup] Fehler-E-Mail gesendet an ${email}`);
 }
 
 // Haupt-Tick — vom Scheduler jede Minute aufgerufen
@@ -188,4 +244,4 @@ async function autoBackupTick() {
   }
 }
 
-module.exports = { autoBackupTick };
+module.exports = { autoBackupTick, runAutoBackup, sendBackupFailEmail };

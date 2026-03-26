@@ -639,6 +639,28 @@ try { db.prepare(`CREATE TABLE IF NOT EXISTS server_rcon_config (
   updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
 )`).run(); } catch(e){}
+
+// ─── MIGRATION: IP-Log (letzte Verbindungen pro Server) ──────────────────────
+try { db.prepare(`CREATE TABLE IF NOT EXISTS server_ip_log (
+  id          TEXT PRIMARY KEY,
+  server_id   TEXT NOT NULL,
+  ip          TEXT NOT NULL,
+  user_id     TEXT,
+  event       TEXT NOT NULL DEFAULT 'connect',
+  user_agent  TEXT DEFAULT '',
+  connected_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+)`).run(); } catch(e){}
+try { db.prepare('CREATE INDEX IF NOT EXISTS idx_ip_log_server ON server_ip_log(server_id, connected_at)').run(); } catch(e){}
+try { db.prepare('CREATE INDEX IF NOT EXISTS idx_ip_log_ip ON server_ip_log(server_id, ip)').run(); } catch(e){}
+
+// ─── MIGRATION: backup_schedules neue Felder ──────────────────────────────────
+try { db.prepare("ALTER TABLE backup_schedules ADD COLUMN notify_on_fail INTEGER DEFAULT 1").run(); } catch(e){}
+try { db.prepare("ALTER TABLE backup_schedules ADD COLUMN notify_email TEXT DEFAULT ''").run(); } catch(e){}
+try { db.prepare("ALTER TABLE backup_schedules ADD COLUMN backup_before_update INTEGER DEFAULT 0").run(); } catch(e){}
+try { db.prepare("ALTER TABLE backup_schedules ADD COLUMN min_free_mb INTEGER DEFAULT 512").run(); } catch(e){}
+try { db.prepare("ALTER TABLE backup_schedules ADD COLUMN consecutive_failures INTEGER DEFAULT 0").run(); } catch(e){}
+try { db.prepare("ALTER TABLE backup_schedules ADD COLUMN last_success_at TEXT").run(); } catch(e){}
 // ─── INDIZES ──────────────────────────────────────────────────────────────────
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_stats_server_time ON server_stats_log(server_id, recorded_at)").run(); } catch(e){}
 try { db.prepare("CREATE INDEX IF NOT EXISTS idx_console_server_user ON console_history(server_id, user_id, executed_at)").run(); } catch(e){}

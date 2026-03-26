@@ -237,21 +237,16 @@ router.get('/schedule', authenticate, canAccess, (req, res) => {
 // PUT  /api/servers/:serverId/backups/schedule
 router.put('/schedule', authenticate, canAccess, (req, res) => {
   const {
-    enabled = 0,
-    cron = '0 4 * * *',
-    keep_count = 5,
-    name_template = 'Auto {date} {time}',
-    notify_on_fail = 1,
-    notify_email = '',
-    backup_before_update = 0,
-    min_free_mb = 512,
+    enabled = 0, cron = '0 4 * * *',
+    keep_count = 5, name_template = 'Auto {date} {time}',
   } = req.body;
 
+  // Cron-Format prüfen (5 Felder)
   if (cron && cron.trim().split(/\s+/).length !== 5) {
-    return res.status(400).json({ error: 'Ungültiges Cron-Format (5 Felder: min h dom mon dow)' });
+    return res.status(400).json({ error: 'Ungültiges Cron-Format (5 Felder erwartet: min h dom mon dow)' });
   }
-  if (keep_count < 1 || keep_count > 100) {
-    return res.status(400).json({ error: 'keep_count muss 1–100 sein' });
+  if (keep_count < 1 || keep_count > 50) {
+    return res.status(400).json({ error: 'keep_count muss zwischen 1 und 50 liegen' });
   }
 
   const exists = db.prepare('SELECT id FROM backup_schedules WHERE server_id=?')
@@ -260,42 +255,21 @@ router.put('/schedule', authenticate, canAccess, (req, res) => {
   if (exists) {
     db.prepare(`
       UPDATE backup_schedules
-      SET enabled=?, cron=?, keep_count=?, name_template=?,
-          notify_on_fail=?, notify_email=?, backup_before_update=?, min_free_mb=?,
-          updated_at=datetime('now')
+      SET enabled=?, cron=?, keep_count=?, name_template=?, updated_at=datetime('now')
       WHERE server_id=?
-    `).run(
-      enabled ? 1:0, cron.trim(), keep_count, name_template,
-      notify_on_fail ? 1:0, notify_email||'', backup_before_update ? 1:0, min_free_mb||512,
-      req.params.serverId
-    );
+    `).run(enabled ? 1 : 0, cron.trim(), keep_count, name_template, req.params.serverId);
   } else {
     const { v4: uuid4 } = require('uuid');
     db.prepare(`
-      INSERT INTO backup_schedules
-        (id, server_id, enabled, cron, keep_count, name_template,
-         notify_on_fail, notify_email, backup_before_update, min_free_mb)
-      VALUES (?,?,?,?,?,?,?,?,?,?)
-    `).run(
-      uuid4(), req.params.serverId, enabled ? 1:0, cron.trim(), keep_count, name_template,
-      notify_on_fail ? 1:0, notify_email||'', backup_before_update ? 1:0, min_free_mb||512
-    );
+      INSERT INTO backup_schedules (id, server_id, enabled, cron, keep_count, name_template)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(uuid4(), req.params.serverId, enabled ? 1 : 0, cron.trim(), keep_count, name_template);
   }
 
   auditLog(req.user.id, 'BACKUP_SCHEDULE_UPDATE', 'server', req.params.serverId,
-    { enabled: !!enabled, cron, notify_on_fail }, req.ip);
-  res.json(db.prepare('SELECT * FROM backup_schedules WHERE server_id=?').get(req.params.serverId));
-});
+    { enabled: !!enabled, cron }, req.ip);
 
-// GET /api/servers/:serverId/backups/schedule/history — letzte Auto-Backup-Ergebnisse
-router.get('/schedule/history', authenticate, canAccess, (req, res) => {
-  const entries = db.prepare(`
-    SELECT id, name, status, note, size_bytes, created_at
-    FROM server_backups
-    WHERE server_id=? AND (note='Automatisch erstellt' OR note LIKE 'Manuell%' OR note LIKE 'Vor Update%')
-    ORDER BY created_at DESC LIMIT 20
-  `).all(req.params.serverId);
-  res.json(entries);
+  res.json(db.prepare('SELECT * FROM backup_schedules WHERE server_id=?').get(req.params.serverId));
 });
 
 // POST /api/servers/:serverId/backups/schedule/run — manuell auslösen

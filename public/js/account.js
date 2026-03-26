@@ -35,7 +35,7 @@ async function loadSettings() {
           <div class="card-title"><i data-lucide="shield-check"></i> Zwei-Faktor-Authentifizierung (2FA)</div>
           <span style="display:flex;align-items:center;gap:8px">
             ${totpStatus.enabled
-              ? `<span style="background:rgba(34,197,94,.12);color:#16a34a;border:1px solid rgba(34,197,94,.25);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500"><i data-lucide="shield-check" style="width:11px;height:11px;vertical-align:-1px"></i> Aktiv</span>`
+              ? `<span style="background:rgba(34,197,94,.12);color:var(--accent3);border:1px solid rgba(34,197,94,.25);padding:3px 10px;border-radius:20px;font-size:12px;font-weight:500"><i data-lucide="shield-check" style="width:11px;height:11px;vertical-align:-1px"></i> Aktiv</span>`
               : `<span style="background:var(--color-background-secondary);color:var(--color-text-secondary);border:1px solid var(--color-border-tertiary);padding:3px 10px;border-radius:20px;font-size:12px">Inaktiv</span>`
             }
           </span>
@@ -180,7 +180,7 @@ function showBackupCodesModal(codes, isNew = false) {
     </div>
     ${isNew ? `
     <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;line-height:1.5">
-      <i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px;color:#d97706"></i>
+      <i data-lucide="alert-triangle" style="width:14px;height:14px;vertical-align:-2px;color:var(--warn)"></i>
       <strong>Wichtig:</strong> Speichere diese Codes jetzt sicher. Sie werden nur einmal angezeigt und können
       den Zugriff auf deinen Account wiederherstellen wenn du keinen Zugriff auf deine Authenticator-App hast.
     </div>` : ''}
@@ -471,7 +471,7 @@ async function loadAdminPrometheus() {
             <div class="card-title"><i data-lucide="activity"></i> Prometheus Metrics</div>
             <p class="text-dim text-sm" style="margin:4px 0 0">Exportiert Server-Metriken im Prometheus text format. Erreichbar unter <code class="text-mono" style="font-size:11px">/metrics</code>.</p>
           </div>
-          <span id="metrics-status-badge" style="padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;flex-shrink:0;${tokenInfo.configured ? 'background:rgba(34,197,94,.12);color:#16a34a' : 'background:rgba(100,116,139,.12);color:var(--color-text-tertiary)'}">
+          <span id="metrics-status-badge" style="padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;flex-shrink:0;${tokenInfo.configured ? 'background:rgba(34,197,94,.12);color:var(--accent3)' : 'background:rgba(100,116,139,.12);color:var(--color-text-tertiary)'}">
             <i data-lucide="${tokenInfo.configured ? 'shield-check' : 'shield-off'}" style="width:12px;height:12px"></i>
             ${tokenInfo.configured ? 'Aktiv' : 'Kein Token'}
           </span>
@@ -545,7 +545,7 @@ async function loadAdminPrometheus() {
               ].map(([name, type, lbls, desc]) => `
                 <tr>
                   <td><code style="font-family:var(--font-mono);font-size:10px">${esc(name)}</code></td>
-                  <td><span style="font-size:10px;padding:1px 6px;border-radius:8px;background:${type==='counter'?'rgba(99,102,241,.15)':'rgba(34,197,94,.12)'};color:${type==='counter'?'#818cf8':'#16a34a'}">${esc(type)}</span></td>
+                  <td><span style="font-size:10px;padding:1px 6px;border-radius:8px;background:${type==='counter'?'rgba(99,102,241,.15)':'rgba(34,197,94,.12)'};color:${type==='counter'?'#818cf8':'var(--accent3)'}">${esc(type)}</span></td>
                   <td style="font-size:10px;color:var(--color-text-tertiary)">${esc(lbls)}</td>
                   <td style="font-size:11px">${esc(desc)}</td>
                 </tr>`).join('')}
@@ -637,7 +637,7 @@ async function prometheusGenerateToken() {
         <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
       </div>
       <div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;padding:12px;margin-bottom:14px">
-        <div style="font-size:11px;color:#d97706;margin-bottom:8px;font-weight:600">
+        <div style="font-size:11px;color:var(--warn);margin-bottom:8px;font-weight:600">
           <i data-lucide="alert-triangle" style="width:12px;height:12px"></i>
           Einmalig! Diesen Token jetzt kopieren — er wird nicht mehr angezeigt.
         </div>

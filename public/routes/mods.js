@@ -321,27 +321,6 @@ router.post('/install', authenticate, canAccess, async (req, res) => {
     const srv = req.srv;
     if (!srv.container_id) return res.status(400).json({ error: 'Container nicht bereit' });
 
-    // ── Backup vor Update (wenn aktiviert) ──────────────────────────────────
-    if (req.body.backup_before_install !== false) {
-      try {
-        const sched = db.prepare('SELECT * FROM backup_schedules WHERE server_id=? AND backup_before_update=1').get(srv.id);
-        if (sched) {
-          const { runAutoBackup } = require('../src/mods/auto-backup-scheduler');
-          const fakeSchedule = {
-            ...sched, name_template: 'Vor Update {date} {time}',
-            keep_count: sched.keep_count || 5,
-          };
-          const fakeServer = { id: srv.id, name: srv.name, container_id: srv.container_id,
-            node_id: srv.node_id, image: srv.image, work_dir: srv.work_dir, status: srv.status };
-          await runAutoBackup(fakeSchedule, fakeServer);
-          console.log(`[mods] Pre-install backup created for server ${srv.id}`);
-        }
-      } catch (preErr) {
-        console.warn('[mods] Pre-install backup failed (non-fatal):', preErr.message);
-        // Non-fatal — continue with install
-      }
-    }
-
     const {
       url,           // direkte Download-URL
       filename,      // Zieldateiname (optional, wird aus URL extrahiert)

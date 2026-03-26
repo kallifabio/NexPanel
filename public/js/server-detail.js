@@ -94,9 +94,11 @@ async function loadServerDetail(id) {
             <div class="console-output" id="console-output"></div>
             <div class="console-input-row">
               <span class="console-prompt">$</span>
-              <input type="text" class="console-input" id="console-input" placeholder="Befehl eingeben... (↑↓ History)"
-                onkeydown="handleConsoleKey(event,'${id}')"/>
+              <input type="text" class="console-input" id="console-input" placeholder="Befehl eingeben... (/alias Tab-Completion ↑↓ History)"
+                onkeydown="handleConsoleKey(event,'${id}')"
+                oninput="updateAliasHint(this.value,'${id}')"/>
             </div>
+            <div id="alias-hint-container" style="position:relative"></div>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;gap:12px">
@@ -135,7 +137,7 @@ async function loadServerDetail(id) {
               <div class="flex" style="justify-content:space-between"><span class="text-muted">CPU</span><span class="text-mono">${server.cpu_limit} ${parseFloat(server.cpu_limit)===1?"Kern":"Kerne"} @ ${server.cpu_percent||100}%</span></div>
               <div class="flex" style="justify-content:space-between"><span class="text-muted">RAM</span><span class="text-mono">${server.memory_limit} MB</span></div>
               <div class="flex" style="justify-content:space-between"><span class="text-muted">Disk</span><span class="text-mono">${server.disk_limit} MB</span></div>
-              <div class="flex" style="justify-content:space-between"><span class="text-muted">Node</span><span class="text-mono text-accent">${esc(node.name||'–')}</span></div>
+              <div class="flex" style="justify-content:space-between"><span class="text-muted">Node</span><span class="text-mono text-accent">${esc(typeof node==="object"?node?.name||"–":node||"–")}</span></div>
             </div>
           </div>
         </div>
@@ -228,7 +230,7 @@ async function loadServerDetail(id) {
               <span id="disk-pct-label">0%</span>
               <span id="disk-limit-label">— MB</span>
             </div>
-            <div id="disk-alert-msg" class="hidden" style="font-size:11px;margin-top:6px;padding:6px 8px;border-radius:5px"></div>
+            <div id="disk-alert-msg" class="hidden" style="font-size:11px;margin-top:6px;padding:6px 8px;border-radius:6px"></div>
           </div>
           <div class="stats-chart-title" style="margin-bottom:14px"><i data-lucide="sliders"></i> Limits</div>
           <div class="limits-table">
@@ -1630,41 +1632,85 @@ function handleConsoleKey(event, serverId) {
   const input = document.getElementById('console-input');
   if (!input) return;
 
+  if (event.key === 'Tab') {
+    event.preventDefault();
+    aliasTabComplete(input, serverId);
+    return;
+  }
+
   if (event.key === 'Enter') {
+    hideAliasHint();
     sendConsoleCommand(serverId);
-    _histIdx = _cmdHistory.length; // nach Send: wieder ans Ende
+    _histIdx = _cmdHistory.length;
+    return;
+  }
+
+  if (event.key === 'Escape') {
+    hideAliasHint();
     return;
   }
 
   if (event.key === 'ArrowUp') {
     event.preventDefault();
+    // If alias dropdown open → navigate it
+    if (aliasDropdownNavigate(-1)) return;
     if (_cmdHistory.length === 0) return;
     _histIdx = Math.max(0, _histIdx - 1);
     input.value = _cmdHistory[_histIdx] || '';
     input.setSelectionRange(input.value.length, input.value.length);
+    updateAliasHint(input.value, serverId);
+    return;
   }
 
   if (event.key === 'ArrowDown') {
     event.preventDefault();
+    if (aliasDropdownNavigate(1)) return;
     _histIdx = Math.min(_cmdHistory.length, _histIdx + 1);
     input.value = _histIdx < _cmdHistory.length ? _cmdHistory[_histIdx] : '';
+    updateAliasHint(input.value, serverId);
+    return;
   }
+
+  // Show alias hint on any typing
+  setTimeout(() => updateAliasHint(input.value, serverId), 0);
 }
 
 // sendConsoleCommand patchen um History lokal zu updaten
 function sendConsoleCommand(serverId) {
   const input = document.getElementById('console-input');
-  const cmd   = input?.value?.trim();
-  if (!cmd) return;
+  const raw   = input?.value?.trim();
+  if (!raw) return;
 
-  // Lokal in History eintragen
-  if (!_cmdHistory.length || _cmdHistory[_cmdHistory.length - 1] !== cmd) {
-    _cmdHistory.push(cmd);
+  // Alias auflösen: "/save" → "save-all", "/op name" → "op name"
+  let cmd = raw;
+  if (raw.startsWith('/')) {
+    const parts    = raw.slice(1).split(' ');
+    const aliasKey = parts[0].toLowerCase();
+    const alias    = _aliases.find(a => a.name === aliasKey);
+    if (alias) {
+      // Argumente anhängen: "/kick Steve reason" → "kick Steve reason" (wenn alias.command = "kick")
+      const extraArgs = parts.slice(1).join(' ');
+      cmd = extraArgs ? alias.command + ' ' + extraArgs : alias.command;
+      // Visual feedback in console
+      const out = document.getElementById('console-output');
+      if (out) {
+        out.insertAdjacentHTML('beforeend',
+          `<div style="color:var(--accent3);font-size:12px;font-family:var(--mono);opacity:.7">` +
+          `<i data-lucide="zap" style="width:10px;height:10px"></i> Alias: <code style="color:var(--accent)">${esc(raw)}</code> → <code>${esc(cmd)}</code></div>`
+        );
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        out.scrollTop = out.scrollHeight;
+      }
+    }
+  }
+
+  // In History eintragen (den Original-Input, nicht den aufgelösten)
+  if (!_cmdHistory.length || _cmdHistory[_cmdHistory.length - 1] !== raw) {
+    _cmdHistory.push(raw);
     if (_cmdHistory.length > 500) _cmdHistory.shift();
   }
   _histIdx = _cmdHistory.length;
 
-  // Original-Logik: WS senden
   wsSend({ type: 'console.input', server_id: serverId, command: cmd });
   if (input) input.value = '';
 }

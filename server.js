@@ -40,7 +40,7 @@ const { attachDaemonEndpoint } = require('./src/docker/daemon-hub');
 const bcrypt     = require('bcryptjs');
 
 // Routes
-const { router: authRouter } = require('./routes/auth');
+const { router: authRouter, authenticate } = require('./routes/auth');
 const serversRouter    = require('./routes/servers');
 const nodesRouter      = require('./routes/nodes');
 const adminRouter      = require('./routes/admin');
@@ -186,6 +186,49 @@ setBroadcast((msg) => broadcastAll(msg));
 if (process.env.SFTP_ENABLED !== 'false') {
   try { startSftpServer(); } catch (e) { console.warn('[sftp] Nicht gestartet:', e.message); }
 }
+// ─── Docker-Status-Endpunkt ───────────────────────────────────────────────────
+app.get('/api/system/docker-status', authenticate, async (req, res) => {
+  const dockerLocal = require('./src/docker/docker-local');
+  const dh          = require('./src/docker/daemon-hub');
+  const available   = dockerLocal.isAvailable();
+  let nodes; try { nodes = db.prepare('SELECT id,name,is_local FROM nodes WHERE status!=0').all(); } catch { nodes = db.prepare('SELECT id,name,is_local FROM nodes').all(); }
+  res.json({ local_docker: available, nodes: nodes.map(n => ({
+    id: n.id, name: n.name, is_local: !!n.is_local,
+    connected: n.is_local ? available : dh.isConnected(n.id),
+  })) });
+});
+
+// ─── Beim Start: lokale Server-Status mit Docker synchronisieren ──────────────
+async function syncLocalServerStatus() {
+  const dockerLocal = require('./src/docker/docker-local');
+  await new Promise(r => setTimeout(r, 4000)); // warten bis Docker-Ping fertig
+  const available = dockerLocal.isAvailable();
+  if (!available) {
+    const r = db.prepare(
+      "UPDATE servers SET status='offline',updated_at=datetime('now') WHERE status='running' AND (node_id IS NULL OR node_id IN (SELECT id FROM nodes WHERE is_local=1))"
+    ).run();
+    if (r.changes > 0) console.log(`[startup] Docker nicht verfügbar — ${r.changes} Server auf offline gesetzt`);
+    return;
+  }
+  // Docker verfügbar → jeden Container prüfen
+  const locals = db.prepare(
+    "SELECT id,container_id FROM servers WHERE container_id IS NOT NULL AND container_id!='' AND (node_id IS NULL OR node_id IN (SELECT id FROM nodes WHERE is_local=1))"
+  ).all();
+  let synced = 0;
+  for (const s of locals) {
+    try {
+      const running = await dockerLocal.isContainerRunning(s.container_id).catch(() => false);
+      const newStatus = running ? 'running' : 'offline';
+      db.prepare("UPDATE servers SET status=?,updated_at=datetime('now') WHERE id=?").run(newStatus, s.id);
+      synced++;
+    } catch {
+      db.prepare("UPDATE servers SET status='offline',updated_at=datetime('now') WHERE id=?").run(s.id);
+    }
+  }
+  if (synced > 0) console.log(`[startup] ${synced} lokale Server-Status synchronisiert`);
+}
+syncLocalServerStatus().catch(e => console.warn('[startup-sync]', e.message));
+
 server.listen(PORT, () => {
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@nexpanel.local';
   const adminPass  = process.env.ADMIN_PASS  || 'admin123';

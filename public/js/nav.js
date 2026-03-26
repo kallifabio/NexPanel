@@ -3,7 +3,49 @@
  */
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
+
+// ─── Docker-Status-Banner ─────────────────────────────────────────────────────
+async function checkDockerStatus() {
+  try {
+    const status = await API.get('/system/docker-status').catch(() => null);
+    if (!status) return;
+    if (!status.local_docker) {
+      showDockerWarning();
+    }
+  } catch (_) {}
+}
+
+function showDockerWarning() {
+  // Don't show twice
+  if (document.getElementById('docker-warning-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'docker-warning-banner';
+  banner.style.cssText = `
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--card2); border: 1px solid var(--warn);
+    border-radius: 10px; padding: 12px 18px; z-index: 9000;
+    display: flex; align-items: center; gap: 12px; max-width: 520px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.4); font-size: 13px;`;
+  banner.innerHTML = `
+    <i data-lucide="alert-triangle" style="width:18px;height:18px;color:var(--warn);flex-shrink:0"></i>
+    <div style="flex:1">
+      <strong style="color:var(--warn)">Docker nicht erreichbar</strong><br>
+      <span style="font-size:12px;color:var(--text2)">
+        Docker Desktop starten oder <code style="background:var(--bg3);padding:1px 5px;border-radius:4px">DOCKER_SOCKET</code> in .env prüfen.
+        Server-Status kann veraltet sein.
+      </span>
+    </div>
+    <button onclick="this.closest('#docker-warning-banner').remove()"
+      style="background:none;border:none;cursor:pointer;color:var(--text3);padding:4px;flex-shrink:0">
+      <i data-lucide="x" style="width:14px;height:14px"></i>
+    </button>`;
+  document.body.appendChild(banner);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
 async function initApp() {
+  // Check Docker availability (non-blocking, just shows a banner if unavailable)
+  checkDockerStatus();
   try {
     if (!State.user) State.user = await API.get('/auth/me');
     document.getElementById('auth-screen').classList.add('hidden');

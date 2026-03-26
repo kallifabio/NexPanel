@@ -14,6 +14,13 @@ const dockerLocal = require('../docker/docker-local');
 
 const { getOrCreateJwtSecret } = require('./db');
 
+// Lazy-load IP whitelist to avoid circular deps
+let _ipWl = null;
+const getIpWl = () => {
+  if (!_ipWl) { try { _ipWl = require('../../routes/ip-whitelist'); } catch {} }
+  return _ipWl;
+};
+
 // Lazy-loaded to avoid circular deps
 function getSaveConsoleCommand() {
   try { return require('../../routes/bulk').saveConsoleCommand; } catch { return () => {}; }
@@ -102,6 +109,18 @@ function attachPanelWS(httpServer) {
           const srv = db.prepare('SELECT * FROM servers WHERE id=?').get(msg.server_id);
           if (!srv) return;
           if (user.role !== 'admin' && srv.user_id !== user.id) return;
+
+          // ── IP-Whitelist: log + enforce ──────────────────────────────────
+          const ipWl    = getIpWl();
+          const clientIp = (ws._socket?.remoteAddress || '').replace(/^::ffff:/, '');
+          if (ipWl) {
+            ipWl.logIpEvent(srv.id, clientIp, user.id, 'ws_connect');
+            if (!ipWl.isAllowed(srv.id, clientIp)) {
+              ws.send(J({ type: 'error', code: 'IP_BLOCKED',
+                message: `Deine IP (${clientIp}) ist nicht in der Whitelist dieses Servers.` }));
+              return;
+            }
+          }
 
           subscriptions.add(`console:${srv.id}`);
 

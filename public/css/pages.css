@@ -5,6 +5,7 @@
 /* ─── SERVER LIST ───────────────────────────────────────────────── */
 .server-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;display:flex;align-items:center;gap:16px;cursor:pointer;transition:.15s}
 .server-item:hover{border-color:var(--border2);background:var(--card2)}
+.server-item .bulk-checkbox{margin:0}
 .server-status-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .server-status-dot.running{background:var(--success);box-shadow:0 0 8px var(--success)}
 .server-status-dot.offline{background:var(--text3)}
@@ -18,7 +19,7 @@
 .tab:hover{color:var(--text);background:var(--bg3)}
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .tabs-wrap{position:relative;margin-bottom:20px}
-.tabs-wrap .tabs{margin-bottom:0;border-bottom:1px solid var(--border)}
+.tabs-wrap 
 .tabs-wrap::after{content:'';position:absolute;right:0;top:0;bottom:1px;width:40px;background:linear-gradient(to right,transparent,var(--bg));pointer-events:none;border-radius:0 6px 0 0}
 
 /* ─── CONSOLE ───────────────────────────────────────────────────── */
@@ -27,7 +28,7 @@
 .console-dot{width:10px;height:10px;border-radius:50%}
 .console-output{flex:1;overflow-y:auto;padding:10px 14px;font-family:var(--mono);font-size:12px;line-height:1.55;color:#a8c0e0;background:#060a12}
 .console-output .line{white-space:pre-wrap;word-break:break-all;display:block;min-height:1.55em}
-.console-output .line.error{color:#ff6b8a;background:rgba(255,60,80,.06)}
+.console-output .line
 .console-output .line.warn{color:var(--warn)}
 .console-output .line.ok{color:var(--success)}
 .console-output .line.sys{color:var(--accent);opacity:.8}
@@ -231,12 +232,23 @@
 #srv-filter-fav.active { background: #facc15; }
 #srv-filter-run.active { background: var(--accent3); }
 
-.fav-btn { transition: transform .15s; }
-.fav-btn:hover { transform: scale(1.2); }
-.fav-btn.fav-active { animation: favPop .25s ease; }
-
-@keyframes favPop {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(1.35); }
-  100% { transform: scale(1); }
+/* ── Console Alias Dropdown & Hint ────────────────────────────────────────── */
+#alias-hint-container {
+  min-height: 0;
+  background: transparent;
 }
+#alias-hint-container:empty { display: none; }
+
+.alias-dd-item {
+  transition: background .1s;
+  border-bottom: 1px solid var(--border);
+}
+.alias-dd-item:last-child { border-bottom: none; }
+.alias-dd-item:hover { background: var(--bg3) !important; }
+
+#alias-dropdown {
+  font-family: var(--mono);
+}
+
+/* ── Alias Manager Modal improvements ───────────────────────────────────────── */
+.alias-row { transition: background .15s, border-color .15s; }

@@ -11,20 +11,44 @@ let Docker;
 try { Docker = require('dockerode'); } catch { Docker = null; }
 
 let docker = null;
+let _dockerAvailable = false;
+
 if (Docker) {
   try {
-    // Windows Named Pipe oder Linux/Mac Unix Socket
     docker = new Docker({ socketPath: DOCKER_SOCKET });
+    _dockerAvailable = true;
   } catch (e) {
-    console.warn('⚠️  Lokales Docker nicht verfügbar:', e.message);
+    console.warn('[docker-local] Socket-Verbindung fehlgeschlagen:', e.message);
   }
 }
 
-function isAvailable() { return docker !== null; }
+function isAvailable() { return _dockerAvailable && docker !== null; }
+
+// ─── Verbindung beim ersten Aufruf verifizieren ───────────────────────────────
+let _verified = false;
+async function verifyConnection() {
+  if (_verified || !docker) return _dockerAvailable;
+  try {
+    await docker.ping();
+    _dockerAvailable = true;
+    _verified = true;
+    console.log('[docker-local] Docker verfügbar auf', DOCKER_SOCKET);
+  } catch (e) {
+    _dockerAvailable = false;
+    _verified = false; // retry on next call
+    console.warn('[docker-local] Docker nicht erreichbar:', e.message.split('\n')[0]);
+  }
+  return _dockerAvailable;
+}
+
+// Beim Start einmal prüfen (non-blocking)
+setTimeout(() => verifyConnection().catch(() => {}), 2000);
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 async function getStats(containerId, memLimitMb) {
-  if (!docker || !containerId) return null;
+  if (!docker || !containerId || !_dockerAvailable) return null;
+  if (!_verified) await verifyConnection().catch(() => {});
+  if (!_dockerAvailable) return null;
   try {
     const container = docker.getContainer(containerId);
     const raw = await new Promise((resolve, reject) =>
@@ -212,6 +236,15 @@ async function execCommand(containerId, command) {
 }
 
 // ─── MINECRAFT COMMAND via rcon-cli ──────────────────────────────────────
+// ─── CONTAINER RUNNING CHECK ─────────────────────────────────────────────────
+async function isContainerRunning(containerId) {
+  if (!docker || !containerId || !_dockerAvailable) return false;
+  try {
+    const info = await docker.getContainer(containerId).inspect();
+    return info?.State?.Running === true;
+  } catch { return false; }
+}
+
 async function sendStdin(containerId, command) {
   if (!docker || !containerId) throw new Error('Kein Container');
   // rcon-cli ist in itzg/minecraft-server eingebaut und nutzt RCON (läuft auf Port 25575 intern)

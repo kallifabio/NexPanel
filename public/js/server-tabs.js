@@ -712,7 +712,7 @@ function renderStartupEditor(root, srv, egg, eggVars, serverId) {
       <table class="table"><tbody>
         <tr><td class="text-dim">ID</td><td class="text-mono text-sm">${esc(srv.id)}</td></tr>
         <tr><td class="text-dim">Container</td><td class="text-mono text-sm">${srv.container_id ? esc(srv.container_id.substring(0,12)) : '—'}</td></tr>
-        <tr><td class="text-dim">Node</td><td>${esc(srv.node||'–')}</td></tr>
+        <tr><td class="text-dim">Node</td><td>${esc(typeof srv.node==='object'?(srv.node?.name||srv.node_name||'Lokal'):srv.node||srv.node_name||'–')}</td></tr>
         <tr><td class="text-dim">Work Dir</td><td class="text-mono">${esc(srv.work_dir||'/home/container')}</td></tr>
         <tr><td class="text-dim">Network</td><td class="text-mono">${esc(srv.network||'bridge')}</td></tr>
         <tr><td class="text-dim">Erstellt</td><td>${new Date(srv.created_at).toLocaleString('de-DE')}</td></tr>
@@ -1697,7 +1697,6 @@ async function dbDelete(serverId, dbId, dbName) {
 async function ipWhitelistInit(serverId) {
   let container = document.getElementById('ip-whitelist-container');
   if (!container) {
-    // Create container if it doesn't exist yet (network tab)
     container = document.createElement('div');
     container.id = 'ip-whitelist-container';
     const root = document.getElementById('network-root');
@@ -1705,69 +1704,232 @@ async function ipWhitelistInit(serverId) {
     else return;
   }
 
-  const data = await API.get(`/servers/${serverId}/ip-whitelist`).catch(() => ({ allowed_ips: [], enabled: false }));
-  const list = data.allowed_ips || [];
+  container.innerHTML = `<div style="margin-top:14px"><div class="empty" style="padding:20px">
+    <div class="empty-icon spin"><i data-lucide="loader-2"></i></div></div></div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+
+  const [data, recent] = await Promise.all([
+    API.get(`/servers/${serverId}/ip-whitelist`).catch(() => ({ entries: [], enabled: false })),
+    API.get(`/servers/${serverId}/ip-whitelist/recent`).catch(() => []),
+  ]);
+  const entries = data.entries || (data.allowed_ips || []).map(e =>
+    typeof e === 'object' ? e : { ip: e, label: '' });
 
   container.innerHTML = `
-    <div class="card" style="margin-top:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div class="card-title"><i data-lucide="shield"></i> IP-Whitelist</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:12px;color:var(--text3)">${list.length === 0 ? 'Deaktiviert (alle IPs erlaubt)' : list.length + ' Einträge'}</span>
-          <button class="btn btn-primary btn-sm" onclick="ipWhitelistAdd('${serverId}')">
-            <i data-lucide="plus"></i> IP hinzufügen
-          </button>
+    <div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">
+
+      <!-- Header -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <div>
+            <div class="card-title" style="margin-bottom:4px">
+              <i data-lucide="shield"></i> IP-Whitelist
+              ${entries.length > 0
+                ? `<span style="margin-left:8px;font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(0,245,160,.1);color:var(--accent3);border:1px solid rgba(0,245,160,.2)">
+                     Aktiv — ${entries.length} ${entries.length===1?'Eintrag':'Einträge'}
+                   </span>`
+                : `<span style="margin-left:8px;font-size:11px;padding:2px 8px;border-radius:8px;background:var(--bg3);color:var(--text3)">
+                     Deaktiviert
+                   </span>`}
+            </div>
+            <div style="font-size:12px;color:var(--text3)">
+              ${entries.length === 0
+                ? 'Alle IPs haben Zugriff. Füge IPs hinzu um den Zugriff einzuschränken.'
+                : 'Nur eingetragene IPs/Ranges dürfen auf die Server-Konsole zugreifen.'}
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            ${entries.length > 0 ? `<button class="btn btn-ghost btn-sm" onclick="ipWhitelistClear('${serverId}')">
+              <i data-lucide="trash-2"></i> Alle entfernen
+            </button>` : ''}
+            <button class="btn btn-ghost btn-sm" onclick="ipWhitelistBulkImport('${serverId}')">
+              <i data-lucide="list"></i> Bulk-Import
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="ipWhitelistAdd('${serverId}')">
+              <i data-lucide="plus"></i> IP hinzufügen
+            </button>
+          </div>
         </div>
       </div>
-      ${list.length === 0
-        ? `<div style="font-size:13px;color:var(--text3);padding:8px 0">
-             <i data-lucide="shield-off" style="width:14px;height:14px"></i>
-             Keine Einschränkungen — alle IP-Adressen haben Zugriff.<br>
-             <span style="font-size:12px">Füge IP-Adressen hinzu um den Zugriff einzuschränken (IPv4, IPv6, CIDR-Notation).</span>
-           </div>`
-        : `<div style="display:flex;flex-direction:column;gap:6px">
-             ${list.map(e => {
-               const ip    = typeof e === 'object' ? e.ip : e;
-               const label = typeof e === 'object' ? e.label : '';
-               return `
-                 <div style="display:flex;align-items:center;gap:10px;background:var(--bg3);border-radius:8px;padding:8px 12px">
-                   <i data-lucide="shield-check" style="width:14px;height:14px;color:var(--accent3);flex-shrink:0"></i>
-                   <code style="flex:1;font-size:13px">${esc(ip)}</code>
-                   ${label ? `<span style="font-size:11px;color:var(--text3)">${esc(label)}</span>` : ''}
-                   <button class="btn btn-ghost btn-xs text-danger"
-                     onclick="ipWhitelistRemove('${serverId}','${esc(ip)}')">
-                     <i data-lucide="x"></i>
-                   </button>
-                 </div>`;
-             }).join('')}
-           </div>`}
+
+      <!-- Whitelist entries -->
+      ${entries.length > 0 ? `
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:12px;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:6px">
+            <i data-lucide="shield-check" style="width:13px;height:13px;color:var(--accent3)"></i>
+            Erlaubte IPs / Ranges
+          </div>
+          <div style="font-size:11px;color:var(--text3)">
+            IPv4 · IPv6 · CIDR · <code>*</code> = alle
+          </div>
+        </div>
+        <div id="wl-entries-list">
+          ${entries.map((e, i) => ipWhitelistEntryHtml(e, i, serverId)).join('')}
+        </div>
+      </div>` : `
+      <div class="card" style="text-align:center;padding:32px">
+        <div style="font-size:32px;margin-bottom:10px;opacity:.3">🛡</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:6px">Keine IP-Einschränkungen aktiv</div>
+        <div style="font-size:12px;color:var(--text3)">Alle IP-Adressen können auf die Server-Konsole zugreifen.</div>
+      </div>`}
+
+      <!-- Recent IPs -->
+      <div class="card">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="card-title">
+            <i data-lucide="clock"></i> Zuletzt verbundene IPs
+            <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:6px">(letzte 30 Tage)</span>
+          </div>
+          <button class="btn btn-ghost btn-xs" onclick="ipWhitelistInit('${serverId}')">
+            <i data-lucide="rotate-ccw"></i>
+          </button>
+        </div>
+        ${recent.length === 0
+          ? `<div style="font-size:13px;color:var(--text3);text-align:center;padding:16px 0">
+               <i data-lucide="wifi-off" style="width:14px;height:14px"></i> Noch keine Verbindungen aufgezeichnet
+             </div>`
+          : `<div style="display:flex;flex-direction:column;gap:6px">
+               ${recent.map(r => `
+                 <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg3);border-radius:8px;
+                   ${r.is_blocked ? 'border:1px solid rgba(255,59,92,.25)' : ''}">
+                   <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${
+                     r.is_blocked     ? 'var(--danger)' :
+                     r.is_whitelisted ? 'var(--accent3)' : 'var(--text3)'}">
+                   </div>
+                   <code style="flex:1;font-size:12px;color:${r.is_blocked?'var(--danger)':r.is_whitelisted?'var(--accent3)':'var(--text)'}">${esc(r.ip)}</code>
+                   <div style="display:flex;gap:4px;font-size:10px;color:var(--text3);flex-shrink:0">
+                     <span title="Verbindungen">${r.hit_count}×</span>
+                     <span>·</span>
+                     <span title="Zuletzt gesehen">${new Date(r.last_seen).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+                   </div>
+                   ${r.is_blocked
+                     ? `<span style="font-size:10px;color:var(--danger);padding:1px 6px;border-radius:4px;background:rgba(255,59,92,.1)">Blockiert</span>`
+                     : r.is_whitelisted
+                     ? `<span style="font-size:10px;color:var(--accent3);padding:1px 6px;border-radius:4px;background:rgba(0,245,160,.08)">Erlaubt</span>`
+                     : entries.length > 0
+                     ? `<span style="font-size:10px;color:var(--danger);padding:1px 6px;border-radius:4px;background:rgba(255,59,92,.08)">Blockiert</span>`
+                     : ''}
+                   ${!r.is_whitelisted ? `
+                     <button class="btn btn-ghost btn-xs" title="Zur Whitelist hinzufügen"
+                       onclick="ipWhitelistAddFromRecent('${serverId}','${esc(r.ip)}')">
+                       <i data-lucide="shield-plus" style="width:11px;height:11px"></i>
+                     </button>` : ''}
+                 </div>`).join('')}
+             </div>`}
+      </div>
+
+      <!-- Help -->
+      <div class="card" style="background:var(--bg3);border-color:transparent">
+        <div style="font-size:12px;color:var(--text2);line-height:1.8">
+          <strong>Unterstützte Formate:</strong><br>
+          <code style="background:var(--bg);padding:1px 5px;border-radius:3px">192.168.1.100</code> — Einzelne IPv4<br>
+          <code style="background:var(--bg);padding:1px 5px;border-radius:3px">10.0.0.0/8</code> — IPv4-Netz (CIDR)<br>
+          <code style="background:var(--bg);padding:1px 5px;border-radius:3px">2001:db8::1</code> — IPv6-Adresse<br>
+          <code style="background:var(--bg);padding:1px 5px;border-radius:3px">*</code> — Alle IPs erlauben (deaktiviert Whitelist)<br>
+          <span style="color:var(--text3)">Leere Whitelist = keine Einschränkungen</span>
+        </div>
+      </div>
     </div>`;
+
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+function ipWhitelistEntryHtml(e, idx, serverId) {
+  const ip    = typeof e === 'object' ? e.ip    : e;
+  const label = typeof e === 'object' ? (e.label||'') : '';
+  return `
+    <div class="wl-entry-row" id="wl-entry-${idx}"
+      style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);transition:background .15s"
+      onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <i data-lucide="shield-check" style="width:14px;height:14px;color:var(--accent3);flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div id="wl-display-${idx}" style="display:flex;align-items:center;gap:8px">
+          <code style="font-size:13px;color:var(--text)">${esc(ip)}</code>
+          ${label ? `<span style="font-size:11px;color:var(--text3)">${esc(label)}</span>` : ''}
+        </div>
+        <div id="wl-edit-${idx}" style="display:none;gap:8px;align-items:center">
+          <input id="wl-edit-ip-${idx}" class="form-input" style="padding:4px 8px;font-size:12px;font-family:var(--mono);width:170px"
+            value="${esc(ip)}" placeholder="IP / CIDR"/>
+          <input id="wl-edit-label-${idx}" class="form-input" style="padding:4px 8px;font-size:12px;flex:1"
+            value="${esc(label)}" placeholder="Beschreibung"/>
+          <button class="btn btn-primary btn-xs" onclick="ipWhitelistSaveEdit('${serverId}','${esc(ip)}',${idx})">
+            <i data-lucide="check"></i>
+          </button>
+          <button class="btn btn-ghost btn-xs" onclick="ipWhitelistCancelEdit(${idx})">
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+      </div>
+      <div id="wl-actions-${idx}" style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-xs" title="Bearbeiten" onclick="ipWhitelistStartEdit(${idx})">
+          <i data-lucide="pencil" style="width:11px;height:11px"></i>
+        </button>
+        <button class="btn btn-ghost btn-xs text-danger" title="Entfernen"
+          onclick="ipWhitelistRemove('${serverId}','${esc(ip)}')">
+          <i data-lucide="x" style="width:11px;height:11px"></i>
+        </button>
+      </div>
+    </div>`;
+}
+
+function ipWhitelistStartEdit(idx) {
+  document.getElementById(`wl-display-${idx}`).style.display = 'none';
+  const editDiv = document.getElementById(`wl-edit-${idx}`);
+  editDiv.style.display = 'flex';
+  document.getElementById(`wl-edit-ip-${idx}`)?.focus();
+  document.getElementById(`wl-actions-${idx}`).style.display = 'none';
+}
+
+function ipWhitelistCancelEdit(idx) {
+  document.getElementById(`wl-display-${idx}`).style.display = 'flex';
+  document.getElementById(`wl-edit-${idx}`).style.display = 'none';
+  document.getElementById(`wl-actions-${idx}`).style.display = 'flex';
+}
+
+async function ipWhitelistSaveEdit(serverId, oldIp, idx) {
+  const newIp   = document.getElementById(`wl-edit-ip-${idx}`)?.value?.trim();
+  const label   = document.getElementById(`wl-edit-label-${idx}`)?.value?.trim() || '';
+  if (!newIp) { toast('IP erforderlich', 'error'); return; }
+  try {
+    await API.patch(`/servers/${serverId}/ip-whitelist/${encodeURIComponent(oldIp)}`,
+      { ip: newIp, label });
+    toast('Gespeichert', 'success');
+    ipWhitelistInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 function ipWhitelistAdd(serverId) {
+  // Get current user's IP via a quick check
+  API.get('/account/quota').catch(()=>{});  // just to warm up
+
   showModal(`
     <div class="modal-title">
       <span><i data-lucide="shield-plus"></i> IP zur Whitelist hinzufügen</span>
       <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
     </div>
     <div class="info-msg" style="margin-bottom:14px;font-size:12px">
-      Erlaubte Formate: <code>192.168.1.1</code> · <code>192.168.0.0/24</code> · <code>2001:db8::1</code> · <code>*</code> (alle)
+      <i data-lucide="info"></i>
+      Unterstützte Formate: <code>192.168.1.1</code> · <code>10.0.0.0/8</code> · <code>2001:db8::1</code> · <code>*</code> (alle)
     </div>
-    <div class="grid grid-2" style="gap:10px;margin-bottom:14px">
-      <div class="form-group">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+      <div class="form-group" style="margin-bottom:0">
         <label class="form-label">IP-Adresse / CIDR *</label>
-        <input id="wl-ip" class="form-input" placeholder="192.168.1.0/24" autofocus/>
+        <input id="wl-ip" class="form-input" placeholder="192.168.1.0/24"
+          style="font-family:var(--mono)" autofocus/>
       </div>
-      <div class="form-group">
+      <div class="form-group" style="margin-bottom:0">
         <label class="form-label">Beschreibung (optional)</label>
-        <input id="wl-label" class="form-input" placeholder="Büro-Netzwerk"/>
+        <input id="wl-label" class="form-input" placeholder="z.B. Büro, VPN, Zuhause"/>
       </div>
     </div>
-    <div style="margin-bottom:12px">
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('wl-ip').value=''">
-        Aktuelle IP einfügen
-      </button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+      <span style="font-size:11px;color:var(--text3);line-height:28px">Schnell:</span>
+      <button class="btn btn-ghost btn-xs" onclick="ipWhitelistQuickAdd('0.0.0.0/0','Alle IPv4')">Alle IPv4</button>
+      <button class="btn btn-ghost btn-xs" onclick="ipWhitelistQuickAdd('::/0','Alle IPv6')">Alle IPv6</button>
+      <button class="btn btn-ghost btn-xs" onclick="ipWhitelistQuickAdd('*','Wildcard')">* (Wildcard)</button>
+      <button class="btn btn-ghost btn-xs" onclick="ipWhitelistQuickAdd('10.0.0.0/8','LAN 10.x')">LAN 10.x</button>
+      <button class="btn btn-ghost btn-xs" onclick="ipWhitelistQuickAdd('192.168.0.0/16','LAN 192.168.x')">LAN 192.168.x</button>
     </div>
     <div id="m-error" class="error-msg hidden"></div>
     <div class="modal-footer">
@@ -1779,6 +1941,11 @@ function ipWhitelistAdd(serverId) {
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
+function ipWhitelistQuickAdd(ip, label) {
+  document.getElementById('wl-ip').value    = ip;
+  document.getElementById('wl-label').value = label;
+}
+
 async function ipWhitelistSubmitAdd(serverId) {
   const ip    = document.getElementById('wl-ip')?.value?.trim();
   const label = document.getElementById('wl-label')?.value?.trim();
@@ -1786,20 +1953,94 @@ async function ipWhitelistSubmitAdd(serverId) {
   if (!ip) { errEl.textContent = 'IP-Adresse erforderlich'; errEl.classList.remove('hidden'); return; }
   try {
     await API.post(`/servers/${serverId}/ip-whitelist`, { ip, label });
-    toast('IP hinzugefügt', 'success');
+    toast(`${ip} hinzugefügt`, 'success');
     closeModal();
     ipWhitelistInit(serverId);
   } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 
-async function ipWhitelistRemove(serverId, ip) {
-  if (!confirm(`IP "${ip}" aus der Whitelist entfernen?`)) return;
+function ipWhitelistBulkImport(serverId) {
+  showModal(`
+    <div class="modal-title">
+      <span><i data-lucide="list"></i> Bulk-Import</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
+      Eine IP / CIDR pro Zeile. Optional: <code>IP  Beschreibung</code> (Tab- oder Space-getrennt)
+    </div>
+    <textarea id="bulk-ips" class="form-input" rows="10" style="font-family:var(--mono);font-size:12px"
+      placeholder="192.168.1.100  Büro PC\n10.0.0.0/8  VPN\n2001:db8::1\n*"></textarea>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+      <label class="toggle-wrap">
+        <input type="checkbox" id="bulk-append" class="toggle-cb" checked/>
+        <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      </label>
+      <span style="font-size:12px">Zu bestehender Liste hinzufügen (sonst ersetzen)</span>
+    </div>
+    <div id="m-error" class="error-msg hidden" style="margin-top:10px"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="ipWhitelistSubmitBulk('${serverId}')">
+        <i data-lucide="upload"></i> Importieren
+      </button>
+    </div>`, true);
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+async function ipWhitelistSubmitBulk(serverId) {
+  const text   = document.getElementById('bulk-ips')?.value || '';
+  const append = document.getElementById('bulk-append')?.checked;
+  const errEl  = document.getElementById('m-error');
+
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  const entries = lines.map(line => {
+    const parts = line.split(/[\t ]+/);
+    return { ip: parts[0], label: parts.slice(1).join(' ') };
+  }).filter(e => e.ip);
+
+  if (!entries.length) { errEl.textContent = 'Keine IPs gefunden'; errEl.classList.remove('hidden'); return; }
+
   try {
-    await API.delete(`/servers/${serverId}/ip-whitelist/${encodeURIComponent(ip)}`);
-    toast('IP entfernt', 'success');
+    let finalEntries = entries;
+    if (append) {
+      const current = await API.get(`/servers/${serverId}/ip-whitelist`);
+      const existing = (current.entries || []);
+      const existingIps = new Set(existing.map(e => e.ip));
+      const newEntries = entries.filter(e => !existingIps.has(e.ip));
+      finalEntries = [...existing, ...newEntries];
+    }
+    const res = await API.put(`/servers/${serverId}/ip-whitelist`, { entries: finalEntries });
+    toast(`${res.entries?.length || 0} IPs in Whitelist`, 'success');
+    closeModal();
+    ipWhitelistInit(serverId);
+  } catch(e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+}
+
+async function ipWhitelistAddFromRecent(serverId, ip) {
+  try {
+    await API.post(`/servers/${serverId}/ip-whitelist`, { ip });
+    toast(`${ip} zur Whitelist hinzugefügt`, 'success');
     ipWhitelistInit(serverId);
   } catch(e) { toast(e.message, 'error'); }
 }
+
+async function ipWhitelistRemove(serverId, ip) {
+  try {
+    await API.delete(`/servers/${serverId}/ip-whitelist/${encodeURIComponent(ip)}`);
+    toast(`${ip} entfernt`, 'success');
+    ipWhitelistInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function ipWhitelistClear(serverId) {
+  if (!confirm('Gesamte IP-Whitelist leeren?\n\nDanach haben wieder alle IPs Zugriff.')) return;
+  try {
+    await API.delete(`/servers/${serverId}/ip-whitelist`);
+    toast('Whitelist geleert', 'success');
+    ipWhitelistInit(serverId);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // AUTO-SLEEP (in Wartungs-Tab eingebettet)

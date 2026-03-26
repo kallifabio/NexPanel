@@ -88,7 +88,7 @@ async function loadServers() {
         <button class="btn btn-ghost btn-sm" id="srv-filter-fav" onclick="setServerFilter('fav',this)" style="border-radius:6px;font-size:12px"><i data-lucide="star" style="width:12px;height:12px;color:#facc15"></i> Favoriten</button>
         <button class="btn btn-ghost btn-sm" id="srv-filter-run" onclick="setServerFilter('run',this)" style="border-radius:6px;font-size:12px"><span style="color:var(--accent3)">●</span> Läuft</button>
       </div>
-      <button class="btn btn-primary" id="bulk-create-btn" onclick="showCreateServer()"><i data-lucide="plus"></i> Neuer Server</button>
+      <button class="btn btn-primary btn-sm" id="bulk-create-btn" onclick="showCreateServer()"><i data-lucide="plus"></i> Neuer Server</button>
     </div>`;
   if (typeof lucide !== 'undefined') lucide.createIcons();
 

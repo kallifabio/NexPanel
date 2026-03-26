@@ -191,7 +191,7 @@ async function loadAdminUsers() {
       <div class="card"><table class="table">
         <thead><tr><th>Benutzer</th><th>Email</th><th>Rolle</th><th>Server</th><th>Status</th><th>Erstellt</th><th></th></tr></thead>
         <tbody>${users.map(u => `<tr>
-          <td><div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent3));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;flex-shrink:0">${u.username[0].toUpperCase()}</div>${esc(u.username)}</div></td>
+          <td><div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent3));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#000;flex-shrink:0">${u.username[0].toUpperCase()}</div>${esc(u.username)}</div></td>
           <td class="text-muted text-sm">${esc(u.email)}</td>
           <td><span class="chip ${u.role==='admin'?'chip-admin':'chip-offline'}">${u.role}</span></td>
           <td class="text-mono">${u.server_count||0}</td>
@@ -400,7 +400,7 @@ function renderEggPreviewCard(egg, warnings = [], index = 0, showImport = false)
         ${egg.startup_command ? `<span style="font-size:11px;font-family:var(--mono);background:rgba(0,212,255,.08);color:var(--accent);padding:2px 8px;border-radius:4px">${esc(egg.startup_command.slice(0,60))}${egg.startup_command.length>60?'…':''}</span>` : ''}
         ${req > 0  ? `<span style="font-size:11px;background:rgba(245,158,11,.1);color:var(--warn);padding:2px 8px;border-radius:4px">${req} Pflichtvar.</span>` : ''}
         ${opt > 0  ? `<span style="font-size:11px;background:rgba(0,212,255,.07);color:var(--text2);padding:2px 8px;border-radius:4px">${opt} opt. Var.</span>` : ''}
-        ${(egg._meta?.image_count||0)>1 ? `<span style="font-size:11px;background:rgba(99,102,241,.1);color:#a5b4fc;padding:2px 8px;border-radius:4px">${egg._meta.image_count} Images</span>` : ''}
+        ${(egg._meta?.image_count||0)>1 ? `<span style="font-size:11px;background:rgba(99,102,241,.1);color:#c084fc;padding:2px 8px;border-radius:4px">${egg._meta.image_count} Images</span>` : ''}
       </div>
       ${(egg.env_vars||[]).length ? `
         <details style="margin-top:8px">
@@ -1382,7 +1382,7 @@ async function aliasesInit(serverId) {
   _aliases = await API.get(`/servers/${serverId}/aliases`).catch(() => []);
 }
 
-// Auflösen bevor Befehl gesendet wird — in consoleInput integriert
+// ─── Alias-Auflösung (genutzt von sendConsoleCommand) ────────────────────────
 function resolveAlias(serverId, input) {
   const trimmed = input.trim();
   if (!trimmed.startsWith('/')) return null;
@@ -1391,173 +1391,581 @@ function resolveAlias(serverId, input) {
   return alias ? alias.command : null;
 }
 
+// ─── Inline-Hint / Dropdown beim Tippen ──────────────────────────────────────
+let _aliasHintSelected = -1;
+
+function updateAliasHint(value, serverId) {
+  const container = document.getElementById('alias-hint-container');
+  if (!container) return;
+
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('/') || !_aliases.length) {
+    container.innerHTML = '';
+    _aliasHintSelected = -1;
+    return;
+  }
+
+  const typed   = trimmed.slice(1).toLowerCase();
+  const matches = _aliases.filter(a => a.name.startsWith(typed) || typed === '');
+
+  if (matches.length === 0) {
+    // Show "unknown alias" hint
+    container.innerHTML = `<div style="font-size:11px;color:var(--text3);padding:3px 14px;font-family:var(--mono)">
+      <i data-lucide="x-circle" style="width:10px;height:10px;color:var(--danger)"></i>
+      Unbekannter Alias — <span style="color:var(--accent)">Tab</span> für Übersicht
+    </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    return;
+  }
+
+  // Exact match → show expanded command preview
+  const exact = matches.find(a => a.name === typed);
+  if (exact && !typed.includes(' ') && trimmed === '/' + typed) {
+    container.innerHTML = `<div style="font-size:11px;color:var(--accent3);padding:3px 14px;font-family:var(--mono);display:flex;align-items:center;gap:6px">
+      <i data-lucide="zap" style="width:10px;height:10px"></i>
+      <span style="color:var(--text3)">→</span>
+      <code style="color:var(--text)">${esc(exact.command)}</code>
+      <span style="color:var(--text3);font-size:10px">[Enter senden · Tab wechseln]</span>
+    </div>`;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    _aliasHintSelected = -1;
+    return;
+  }
+
+  // Multiple partial matches → dropdown
+  _aliasHintSelected = -1;
+  container.innerHTML = `<div id="alias-dropdown" style="
+    position:absolute;bottom:100%;left:0;right:0;
+    background:var(--card2);border:1px solid var(--border2);
+    border-radius:8px 8px 0 0;overflow:hidden;
+    box-shadow:0 -4px 16px rgba(0,0,0,.4);z-index:200;
+    max-height:180px;overflow-y:auto">
+    ${matches.slice(0, 8).map((a, i) => `
+      <div class="alias-dd-item" data-idx="${i}" data-name="${esc(a.name)}" data-cmd="${esc(a.command)}"
+        style="display:flex;align-items:center;gap:10px;padding:7px 14px;cursor:pointer;font-family:var(--mono)"
+        onmouseover="aliasDropdownSelect(${i})"
+        onclick="aliasDropdownApply('${serverId}',${i})">
+        <code style="font-size:12px;color:var(--accent);min-width:80px">/${esc(a.name)}</code>
+        <span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.command)}</span>
+        <kbd style="font-size:9px;color:var(--text3);background:var(--bg3);padding:1px 5px;border-radius:3px">Tab</kbd>
+      </div>`).join('')}
+  </div>`;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function hideAliasHint() {
+  const el = document.getElementById('alias-hint-container');
+  if (el) el.innerHTML = '';
+  _aliasHintSelected = -1;
+}
+
+function aliasDropdownSelect(idx) {
+  _aliasHintSelected = idx;
+  document.querySelectorAll('.alias-dd-item').forEach((el, i) => {
+    el.style.background = i === idx ? 'var(--bg3)' : '';
+    el.style.color      = i === idx ? 'var(--accent)' : '';
+  });
+}
+
+function aliasDropdownNavigate(dir) {
+  const items = document.querySelectorAll('.alias-dd-item');
+  if (!items.length) return false;
+  _aliasHintSelected = Math.max(-1, Math.min(items.length - 1, _aliasHintSelected + dir));
+  items.forEach((el, i) => {
+    el.style.background = i === _aliasHintSelected ? 'var(--bg3)' : '';
+  });
+  return true;
+}
+
+function aliasTabComplete(input, serverId) {
+  const items = document.querySelectorAll('.alias-dd-item');
+  if (items.length === 0 && _aliases.length > 0) {
+    // No dropdown open yet → show all aliases
+    updateAliasHint('/', serverId);
+    input.value = '/';
+    return;
+  }
+
+  const idx = _aliasHintSelected >= 0 ? _aliasHintSelected : 0;
+  if (!items[idx]) return;
+  aliasDropdownApply(serverId, idx);
+}
+
+function aliasDropdownApply(serverId, idx) {
+  const items = document.querySelectorAll('.alias-dd-item');
+  const item  = items[idx];
+  if (!item) return;
+  const name = item.dataset.name;
+  const input = document.getElementById('console-input');
+  if (input) {
+    input.value = '/' + name + ' ';
+    input.focus();
+    // Show preview of expanded command
+    updateAliasHint(input.value, serverId);
+  }
+}
+
+// ─── Alias-Manager Modal ─────────────────────────────────────────────────────
 function showAliasManager(serverId) {
-  const renderList = () => _aliases.length
-    ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">
-        ${_aliases.map(a => `
-          <div style="display:flex;align-items:center;gap:8px;background:var(--bg2);border-radius:8px;padding:8px 12px">
-            <code style="color:var(--accent);font-size:12px;min-width:100px">/${esc(a.name)}</code>
-            <span style="flex:1;font-size:12px;color:var(--text2);font-family:var(--mono)">${esc(a.command)}</span>
-            <button class="btn btn-ghost btn-xs" onclick="deleteAlias('${serverId}','${a.id}')"><i data-lucide="trash-2"></i></button>
-          </div>`).join('')}
-      </div>`
-    : '<p class="text-dim text-sm" style="margin-bottom:14px">Noch keine Aliases. Erstelle deinen ersten!</p>';
+  _renderAliasModal(serverId);
+}
+
+function _aliasRowHtml(a, serverId) {
+  return `<div class="alias-row" id="alias-row-${a.id}"
+    style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:8px 12px;border:1px solid transparent;transition:.15s"
+    onmouseover="this.style.borderColor='var(--border)'" onmouseout="this.style.borderColor='transparent'">
+    <code style="color:var(--accent);font-size:13px;min-width:90px;flex-shrink:0">/${esc(a.name)}</code>
+    <span style="flex:1;font-size:12px;color:var(--text2);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+      title="${esc(a.command)}">${esc(a.command)}</span>
+    <div style="display:flex;gap:4px;flex-shrink:0">
+      <button class="btn btn-ghost btn-xs" title="Bearbeiten"
+        onclick="aliasStartEdit('${serverId}','${a.id}','${esc(a.name)}','${esc(a.command).replace(/'/g,"\\'")}')"
+        ><i data-lucide="pencil" style="width:11px;height:11px"></i></button>
+      <button class="btn btn-ghost btn-xs text-danger" title="Löschen"
+        onclick="deleteAlias('${serverId}','${a.id}')">
+        <i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+    </div>
+  </div>`;
+}
+
+function _renderAliasModal(serverId) {
+  const listHtml = _aliases.length
+    ? `<div style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto;margin-bottom:14px">
+        ${_aliases.map(a => _aliasRowHtml(a, serverId)).join('')}
+       </div>`
+    : `<div style="text-align:center;padding:20px 0;margin-bottom:14px">
+        <div style="font-size:28px;margin-bottom:8px">⌨</div>
+        <p style="font-size:13px;color:var(--text3)">Noch keine Aliases — erstelle deinen ersten!</p>
+       </div>`;
 
   showModal(`
-    <div class="modal-title"><span><i data-lucide="terminal"></i> Console Aliases</span><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-    <div class="info-msg" style="margin-bottom:14px;font-size:12px">Tippe <code>/aliasname</code> in der Console um den Befehl auszuführen.</div>
-    <div id="alias-list">${renderList()}</div>
-    <div style="border-top:1px solid var(--border);padding-top:14px">
-      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px">Neuer Alias</div>
-      <div class="grid grid-2" style="gap:10px;margin-bottom:10px">
+    <div class="modal-title">
+      <span><i data-lucide="terminal"></i> Console Aliases</span>
+      <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text2);line-height:1.6">
+      <div style="font-weight:600;margin-bottom:4px;color:var(--text)"><i data-lucide="info" style="width:12px;height:12px"></i> Verwendung</div>
+      Tippe <code style="background:var(--bg);padding:1px 6px;border-radius:4px;color:var(--accent)">/aliasname</code> in der Konsole.<br>
+      <span style="color:var(--text3)">Tab</span> öffnet Auto-Completion · Argumente werden angehängt:
+      <code style="background:var(--bg);padding:1px 6px;border-radius:4px;color:var(--accent3)">/op Steve</code> → <code style="background:var(--bg);padding:1px 6px;border-radius:4px">op Steve</code>
+    </div>
+
+    <div id="alias-list">${listHtml}</div>
+
+    <div id="alias-edit-section" style="border-top:1px solid var(--border);padding-top:14px">
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <i data-lucide="plus-circle" style="width:13px;height:13px"></i>
+        <span id="alias-form-title">Neuer Alias</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1.8fr auto;gap:8px;align-items:end">
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Name</label>
-          <div style="display:flex;align-items:center;gap:4px">
-            <span style="color:var(--text3)">/</span>
-            <input id="alias-name" class="form-input" placeholder="restart" style="margin:0"/>
+          <label class="form-label" style="font-size:11px">Name</label>
+          <div style="display:flex;align-items:center;gap:3px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0 8px">
+            <span style="color:var(--accent);font-weight:700;font-family:var(--mono)">/</span>
+            <input id="alias-name" class="form-input"
+              style="background:transparent;border:none;padding:8px 4px;font-family:var(--mono)"
+              placeholder="save" maxlength="32"
+              oninput="this.value=this.value.replace(/[^a-z0-9_-]/gi,'').toLowerCase()"/>
           </div>
         </div>
         <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Befehl</label>
-          <input id="alias-cmd" class="form-input" placeholder="say Restarting in 10s" style="margin:0"/>
+          <label class="form-label" style="font-size:11px">Befehl</label>
+          <input id="alias-cmd" class="form-input" placeholder="save-all" style="font-family:var(--mono)"/>
+        </div>
+        <div style="display:flex;gap:5px">
+          <button class="btn btn-primary btn-sm" id="alias-submit-btn" onclick="submitAlias('${serverId}')">
+            <i data-lucide="plus"></i>
+          </button>
+          <button class="btn btn-ghost btn-sm" id="alias-cancel-btn" style="display:none" onclick="aliasCancelEdit()">
+            <i data-lucide="x"></i>
+          </button>
         </div>
       </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal()">Schließen</button>
-      <button class="btn btn-primary" onclick="createAlias('${serverId}')"><i data-lucide="plus"></i> Alias erstellen</button>
+      <div id="alias-form-error" class="error-msg hidden" style="margin-top:6px"></div>
+
+      <!-- Quick-Presets -->
+      <div style="margin-top:10px">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Schnell-Presets</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${[
+            ['save',    'save-all'],
+            ['day',     'time set day'],
+            ['night',   'time set night'],
+            ['sun',     'weather clear'],
+            ['rain',    'weather rain'],
+            ['gmc',     'gamemode creative'],
+            ['gms',     'gamemode survival'],
+            ['gma',     'gamemode adventure'],
+            ['tpa',     'tp'],
+            ['heal',    'effect give @a minecraft:instant_health 1 10'],
+            ['spawnmob','summon '],
+            ['lag',     'timings report'],
+          ].map(([name, cmd]) =>
+            `<button class="btn btn-ghost btn-xs" style="font-size:10px;font-family:var(--mono)"
+              onclick="aliasPreset('${serverId}','${name}','${cmd.replace(/'/g,"\\'")}')">
+              /${name}</button>`
+          ).join('')}
+        </div>
+      </div>
     </div>`, true);
   if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-async function createAlias(serverId) {
-  const name = document.getElementById('alias-name').value.trim();
-  const command = document.getElementById('alias-cmd').value.trim();
-  if (!name || !command) { toast('Name und Befehl erforderlich', 'error'); return; }
-  try {
-    await API.post(`/servers/${serverId}/aliases`, { name, command });
-    toast(`Alias /${name} erstellt`, 'success');
-    _aliases = await API.get(`/servers/${serverId}/aliases`);
-    document.getElementById('alias-list').innerHTML = _aliases.length
-      ? `<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">${_aliases.map(a => `<div style="display:flex;align-items:center;gap:8px;background:var(--bg2);border-radius:8px;padding:8px 12px"><code style="color:var(--accent);font-size:12px;min-width:100px">/${esc(a.name)}</code><span style="flex:1;font-size:12px;color:var(--text2);font-family:var(--mono)">${esc(a.command)}</span><button class="btn btn-ghost btn-xs" onclick="deleteAlias('${serverId}','${a.id}')"><i data-lucide='trash-2'></i></button></div>`).join('')}</div>`
-      : '<p class="text-dim text-sm" style="margin-bottom:14px">Noch keine Aliases.</p>';
-    document.getElementById('alias-name').value = '';
-    document.getElementById('alias-cmd').value = '';
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-  } catch(e) { toast(e.message, 'error'); }
+// Preset einfügen
+function aliasPreset(serverId, name, cmd) {
+  document.getElementById('alias-name').value = name;
+  document.getElementById('alias-cmd').value  = cmd;
+  document.getElementById('alias-name').focus();
+  // Check if already exists
+  const exists = _aliases.find(a => a.name === name);
+  if (exists) {
+    const errEl = document.getElementById('alias-form-error');
+    if (errEl) { errEl.textContent = `"/${name}" existiert bereits — du kannst ihn unten bearbeiten.`; errEl.classList.remove('hidden'); }
+  }
 }
 
+let _editingAliasId = null;
+
+function aliasStartEdit(serverId, id, name, command) {
+  _editingAliasId = id;
+  document.getElementById('alias-name').value  = name;
+  document.getElementById('alias-cmd').value   = command;
+  document.getElementById('alias-form-title').textContent = `Alias bearbeiten: /${name}`;
+  document.getElementById('alias-submit-btn').innerHTML   = '<i data-lucide="save"></i>';
+  document.getElementById('alias-cancel-btn').style.display = '';
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  document.getElementById('alias-name').focus();
+  // Highlight editing row
+  document.querySelectorAll('.alias-row').forEach(r => r.style.background = 'var(--bg3)');
+  const row = document.getElementById(`alias-row-${id}`);
+  if (row) row.style.background = 'rgba(0,212,255,.08)';
+}
+
+function aliasCancelEdit() {
+  _editingAliasId = null;
+  document.getElementById('alias-name').value = '';
+  document.getElementById('alias-cmd').value  = '';
+  document.getElementById('alias-form-title').textContent = 'Neuer Alias';
+  document.getElementById('alias-submit-btn').innerHTML   = '<i data-lucide="plus"></i>';
+  document.getElementById('alias-cancel-btn').style.display = 'none';
+  document.getElementById('alias-form-error')?.classList.add('hidden');
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+  document.querySelectorAll('.alias-row').forEach(r => r.style.background = 'var(--bg3)');
+}
+
+async function submitAlias(serverId) {
+  const name    = document.getElementById('alias-name').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const command = document.getElementById('alias-cmd').value.trim();
+  const errEl   = document.getElementById('alias-form-error');
+
+  if (!name)    { errEl.textContent = 'Name erforderlich'; errEl.classList.remove('hidden'); return; }
+  if (!command) { errEl.textContent = 'Befehl erforderlich'; errEl.classList.remove('hidden'); return; }
+  errEl.classList.add('hidden');
+
+  try {
+    if (_editingAliasId) {
+      await API.patch(`/servers/${serverId}/aliases/${_editingAliasId}`, { name, command });
+      toast(`Alias /${name} aktualisiert`, 'success');
+    } else {
+      await API.post(`/servers/${serverId}/aliases`, { name, command });
+      toast(`Alias /${name} erstellt`, 'success');
+    }
+    _aliases = await API.get(`/servers/${serverId}/aliases`);
+    aliasCancelEdit();
+    // Re-render list in-place
+    const listEl = document.getElementById('alias-list');
+    if (listEl) {
+      listEl.innerHTML = _aliases.length
+        ? `<div style="display:flex;flex-direction:column;gap:5px;max-height:240px;overflow-y:auto;margin-bottom:14px">
+            ${_aliases.map(a => _aliasRowHtml(a, serverId)).join('')}
+           </div>`
+        : `<div style="text-align:center;padding:20px 0;margin-bottom:14px"><p style="font-size:13px;color:var(--text3)">Noch keine Aliases.</p></div>`;
+      if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
+// Kept as createAlias for backward compat (buttons generated in old HTML)
+async function createAlias(serverId) { return submitAlias(serverId); }
+
 async function deleteAlias(serverId, aliasId) {
+  const alias = _aliases.find(a => a.id === aliasId);
+  if (!confirm(`Alias "/${alias?.name || aliasId}" wirklich löschen?`)) return;
   try {
     await API.delete(`/servers/${serverId}/aliases/${aliasId}`);
     _aliases = _aliases.filter(a => a.id !== aliasId);
     toast('Alias gelöscht', 'success');
-    showAliasManager(serverId);
+    // Remove from DOM in-place
+    const row = document.getElementById(`alias-row-${aliasId}`);
+    if (row) row.remove();
+    if (_editingAliasId === aliasId) aliasCancelEdit();
+    if (_aliases.length === 0) {
+      const listEl = document.getElementById('alias-list');
+      if (listEl) listEl.innerHTML = `<div style="text-align:center;padding:20px 0;margin-bottom:14px"><p style="font-size:13px;color:var(--text3)">Noch keine Aliases.</p></div>`;
+    }
   } catch(e) { toast(e.message, 'error'); }
 }
+
 
 // ═══════════════════════════════════════════════════════════════
 // AUTO-BACKUP SCHEDULE (in Backups Tab)
 // ═══════════════════════════════════════════════════════════════
 async function loadBackupSchedule(serverId) {
-  const sched = await API.get(`/servers/${serverId}/backups/schedule`).catch(() => null);
+  const [sched, history] = await Promise.all([
+    API.get(`/servers/${serverId}/backups/schedule`).catch(() => null),
+    API.get(`/servers/${serverId}/backups/schedule/history`).catch(() => []),
+  ]);
   if (!sched) return '';
 
   const nextRun = sched.enabled && sched.cron ? cronNextRun(sched.cron) : null;
+  const failures = sched.consecutive_failures || 0;
 
   return `
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <div class="card-title"><i data-lucide="calendar-clock"></i> Automatisches Backup</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          ${sched.enabled ? `<span style="font-size:11px;padding:3px 8px;border-radius:8px;background:rgba(0,245,160,.1);color:var(--accent3);border:1px solid rgba(0,245,160,.2)"><i data-lucide="check-circle-2" style="width:10px;height:10px"></i> Aktiv</span>` : ''}
-          <button class="btn btn-ghost btn-sm" onclick="showBackupScheduleModal('${serverId}')"><i data-lucide="settings"></i> Konfigurieren</button>
+    <div class="card" style="margin-bottom:12px;${failures >= 2 ? 'border-color:rgba(255,59,92,.35)' : ''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="card-title" style="display:flex;align-items:center;gap:8px">
+          <i data-lucide="calendar-clock"></i> Automatisches Backup
+          ${sched.enabled
+            ? `<span style="font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(0,245,160,.1);color:var(--accent3);border:1px solid rgba(0,245,160,.2)">Aktiv</span>`
+            : `<span style="font-size:11px;padding:2px 8px;border-radius:8px;background:var(--bg3);color:var(--text3)">Inaktiv</span>`}
+          ${failures >= 2 ? `<span style="font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(255,59,92,.1);color:var(--danger);border:1px solid rgba(255,59,92,.25)"><i data-lucide="alert-triangle" style="width:10px;height:10px"></i> ${failures} Fehler</span>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
           ${sched.enabled ? `<button class="btn btn-ghost btn-sm" onclick="runBackupScheduleNow('${serverId}')"><i data-lucide="play"></i> Jetzt</button>` : ''}
+          <button class="btn btn-ghost btn-sm" onclick="showBackupScheduleModal('${serverId}')"><i data-lucide="settings"></i> Konfigurieren</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:12px">
-        <div style="background:var(--bg3);border-radius:6px;padding:10px">
-          <div style="color:var(--text3);margin-bottom:3px">Zeitplan</div>
-          <code style="font-size:11px">${esc(sched.cron)}</code>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:${sched.last_run_at || history.length ? '12px' : '0'}">
+        <div style="background:var(--bg3);border-radius:6px;padding:9px 12px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Zeitplan</div>
+          <code style="font-size:12px">${esc(sched.cron || '–')}</code>
         </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:10px">
-          <div style="color:var(--text3);margin-bottom:3px">Aufbewahrung</div>
-          <strong>${sched.keep_count} Backups</strong>
+        <div style="background:var(--bg3);border-radius:6px;padding:9px 12px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Aufbewahren</div>
+          <strong style="font-size:13px">${sched.keep_count}</strong><span style="font-size:11px;color:var(--text3)"> Backups</span>
         </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:10px">
-          <div style="color:var(--text3);margin-bottom:3px">Nächste Ausführung</div>
-          <span style="color:${sched.enabled?'var(--accent)':'var(--text3)'}">${sched.enabled && nextRun ? nextRun : 'Deaktiviert'}</span>
+        <div style="background:var(--bg3);border-radius:6px;padding:9px 12px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Nächste</div>
+          <span style="font-size:12px;color:${sched.enabled ? 'var(--accent)' : 'var(--text3)'}">${sched.enabled && nextRun ? nextRun : 'Deaktiviert'}</span>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:9px 12px">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">Benachrichtigung</div>
+          <span style="font-size:12px">${sched.notify_on_fail
+            ? `<span style="color:var(--accent3)"><i data-lucide="mail" style="width:11px;height:11px"></i> ${sched.notify_email ? esc(sched.notify_email.slice(0,20)) : 'Discord/Mail'}</span>`
+            : '<span style="color:var(--text3)">Deaktiviert</span>'}</span>
         </div>
       </div>
-      ${sched.last_run_at ? `<div style="margin-top:8px;font-size:11px;color:var(--text3)">Zuletzt: ${new Date(sched.last_run_at).toLocaleString('de-DE')} — <span style="color:${!sched.last_result?.includes('Fehler')?'var(--accent3)':'var(--danger)'}">${esc(sched.last_result||'')}</span></div>` : ''}
+
+      ${sched.last_run_at ? `
+      <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text3);padding-top:8px;border-top:1px solid var(--border)">
+        <i data-lucide="clock" style="width:12px;height:12px"></i>
+        Letzter Lauf: ${new Date(sched.last_run_at).toLocaleString('de-DE')}
+        ${sched.last_result ? `<span style="margin-left:4px;color:${sched.last_result.includes('Fehler') || sched.last_result.includes('❌') ? 'var(--danger)' : 'var(--accent3)'}">— ${esc(sched.last_result.slice(0,80))}</span>` : ''}
+        ${sched.last_success_at && sched.last_run_at !== sched.last_success_at ? `<span style="color:var(--accent3)">· Letzter Erfolg: ${new Date(sched.last_success_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>` : ''}
+      </div>` : ''}
+
+      ${history.length > 0 ? `
+      <details style="margin-top:10px">
+        <summary style="font-size:12px;color:var(--text3);cursor:pointer;user-select:none">
+          <i data-lucide="history" style="width:12px;height:12px"></i> Verlauf (${history.length} Einträge)
+        </summary>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:200px;overflow-y:auto">
+          ${history.map(h => `
+            <div style="display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border-radius:6px;font-size:12px">
+              <span style="color:${h.status==='ready'?'var(--accent3)':h.status==='failed'?'var(--danger)':'var(--text3)'};flex-shrink:0">
+                ${h.status==='ready' ? '✓' : h.status==='failed' ? '✗' : '…'}
+              </span>
+              <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.name)}</span>
+              ${h.size_bytes > 0 ? `<span style="color:var(--text3);font-family:var(--mono);flex-shrink:0">${(h.size_bytes/1024/1024).toFixed(1)}MB</span>` : ''}
+              <span style="color:var(--text3);flex-shrink:0">${new Date(h.created_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+            </div>`).join('')}
+        </div>
+      </details>` : ''}
     </div>`;
 }
 
 function cronNextRun(expr) {
-  // Simple: just return next occurrence description
-  const parts = expr.split(' ');
-  if (parts.length !== 5) return '?';
-  const [min, hour] = parts;
-  if (min !== '*' && hour !== '*') return `täglich ${hour.padStart(2,'0')}:${min.padStart(2,'0')} Uhr`;
-  if (hour !== '*') return `stündlich`;
-  return 'benutzerdefiniert';
+  try {
+    const parts = expr.trim().split(/\s+/);
+    if (parts.length !== 5) return '?';
+    const [min, hour, dom, mon, dow] = parts;
+
+    const now  = new Date();
+    const next = new Date(now);
+    next.setSeconds(0, 0);
+
+    // Try up to 8 days ahead
+    for (let i = 0; i < 8 * 24 * 60; i++) {
+      next.setMinutes(next.getMinutes() + 1);
+      if (next <= now) continue;
+      const matches = (e, v) => {
+        if (e === '*') return true;
+        const step = e.match(/^\*\/(\d+)$/); if (step) return v % parseInt(step[1]) === 0;
+        const range = e.match(/^(\d+)-(\d+)$/); if (range) return v >= +range[1] && v <= +range[2];
+        return parseInt(e) === v;
+      };
+      if (matches(min, next.getMinutes()) && matches(hour, next.getHours()) &&
+          matches(dom, next.getDate()) && matches(mon, next.getMonth()+1) &&
+          matches(dow, next.getDay())) {
+        const diff = Math.round((next - now) / 60000);
+        if (diff < 60)   return `in ${diff} Min`;
+        if (diff < 1440) return `heute ${next.getHours().toString().padStart(2,'0')}:${next.getMinutes().toString().padStart(2,'0')}`;
+        if (diff < 2880) return `morgen ${next.getHours().toString().padStart(2,'0')}:${next.getMinutes().toString().padStart(2,'0')}`;
+        return next.toLocaleDateString('de-DE',{weekday:'short',hour:'2-digit',minute:'2-digit'});
+      }
+    }
+    return 'benutzerdefiniert';
+  } catch { return '?'; }
 }
 
 function showBackupScheduleModal(serverId) {
   API.get(`/servers/${serverId}/backups/schedule`).then(sched => {
     showModal(`
-      <div class="modal-title"><span><i data-lucide="calendar-clock"></i> Auto-Backup Zeitplan</span><button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button></div>
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
-        <label class="toggle-wrap"><input type="checkbox" id="bs-enabled" class="toggle-cb" ${sched.enabled?'checked':''}/><div class="toggle-track"><div class="toggle-thumb"></div></div></label>
-        <span style="font-size:13px">Auto-Backup aktivieren</span>
+      <div class="modal-title">
+        <span><i data-lucide="calendar-clock"></i> Auto-Backup Konfiguration</span>
+        <button class="modal-close" onclick="closeModal()"><i data-lucide="x"></i></button>
       </div>
-      <div class="grid grid-2" style="gap:12px;margin-bottom:14px">
-        <div class="form-group">
-          <label class="form-label">Cron-Ausdruck</label>
-          <input id="bs-cron" class="form-input" value="${esc(sched.cron)}" placeholder="0 4 * * *"/>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">
-            Beispiele: <code>0 4 * * *</code> = täglich 04:00 · <code>0 */6 * * *</code> = alle 6h
+
+      <!-- Enable toggle -->
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border);margin-bottom:16px">
+        <label class="toggle-wrap">
+          <input type="checkbox" id="bs-enabled" class="toggle-cb" ${sched.enabled ? 'checked' : ''}/>
+          <div class="toggle-track"><div class="toggle-thumb"></div></div>
+        </label>
+        <div>
+          <div style="font-weight:600;font-size:13px">Auto-Backup aktivieren</div>
+          <div style="font-size:11px;color:var(--text3)">Erstellt automatisch Backups nach dem Zeitplan</div>
+        </div>
+      </div>
+
+      <!-- Zeitplan & Aufbewahrung -->
+      <div class="grid grid-2" style="gap:12px;margin-bottom:16px">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Cron-Zeitplan</label>
+          <input id="bs-cron" class="form-input" style="font-family:var(--mono)" value="${esc(sched.cron)}" placeholder="0 4 * * *"/>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">
+            <a href="https://crontab.guru" target="_blank" style="color:var(--accent)">crontab.guru</a>
+          </div>
+          <!-- Presets -->
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+            ${[['täglich 04:00','0 4 * * *'],['täglich 02:00','0 2 * * *'],['alle 6h','0 */6 * * *'],
+               ['alle 12h','0 */12 * * *'],['wöchentlich Mo','0 3 * * 1'],['monatlich','0 3 1 * *']].map(([label,v]) =>
+              `<button type="button" class="btn btn-ghost btn-xs" style="font-size:10px"
+                onclick="document.getElementById('bs-cron').value='${v}'">${label}</button>`
+            ).join('')}
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Aufbewahrung (Anzahl)</label>
-          <input id="bs-keep" class="form-input" type="number" min="1" max="50" value="${sched.keep_count}"/>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">Älteste Backups werden automatisch gelöscht</div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Aufbewahrung</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input id="bs-keep" class="form-input" type="number" min="1" max="100" value="${sched.keep_count}" style="width:80px"/>
+            <span style="font-size:13px;color:var(--text2)">Backups behalten</span>
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:4px">Älteste Auto-Backups werden automatisch gelöscht</div>
         </div>
       </div>
+
+      <!-- Name Template -->
       <div class="form-group">
         <label class="form-label">Name-Template</label>
         <input id="bs-tmpl" class="form-input" value="${esc(sched.name_template)}" placeholder="Auto {date} {time}"/>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">Platzhalter: <code>{date}</code> <code>{time}</code> <code>{server}</code></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px">
+          Platzhalter: <code>{date}</code> · <code>{time}</code> · <code>{server}</code>
+        </div>
       </div>
+
+      <!-- Backup vor Update -->
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="bs-before-update" class="toggle-cb" ${sched.backup_before_update ? 'checked' : ''}/>
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          </label>
+          <div>
+            <div style="font-weight:600;font-size:13px"><i data-lucide="shield" style="width:12px;height:12px"></i> Backup vor Mod-Updates</div>
+            <div style="font-size:11px;color:var(--text3)">Erstellt automatisch ein Backup bevor Mods installiert/aktualisiert werden</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Benachrichtigungen -->
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <label class="toggle-wrap">
+            <input type="checkbox" id="bs-notify" class="toggle-cb" ${sched.notify_on_fail ? 'checked' : ''}
+              onchange="document.getElementById('bs-notify-email-row').classList.toggle('hidden',!this.checked)"/>
+            <div class="toggle-track"><div class="toggle-thumb"></div></div>
+          </label>
+          <div>
+            <div style="font-weight:600;font-size:13px"><i data-lucide="mail" style="width:12px;height:12px"></i> E-Mail bei Backup-Fehler</div>
+            <div style="font-size:11px;color:var(--text3)">Sendet eine E-Mail wenn ein Auto-Backup fehlschlägt</div>
+          </div>
+        </div>
+        <div id="bs-notify-email-row" class="${sched.notify_on_fail ? '' : 'hidden'}">
+          <label class="form-label">E-Mail-Adresse</label>
+          <input id="bs-email" class="form-input" type="email" placeholder="admin@example.com"
+            value="${esc(sched.notify_email || '')}"/>
+          <div style="font-size:11px;color:var(--text3);margin-top:3px">
+            SMTP muss in .env konfiguriert sein (SMTP_HOST, SMTP_USER, SMTP_PASS)
+          </div>
+        </div>
+      </div>
+
+      <div id="bs-error" class="error-msg hidden"></div>
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
-        <button class="btn btn-primary" onclick="saveBackupSchedule('${serverId}')"><i data-lucide="save"></i> Speichern</button>
+        <button class="btn btn-primary" onclick="saveBackupSchedule('${serverId}')">
+          <i data-lucide="save"></i> Speichern
+        </button>
       </div>`, true);
     if (typeof lucide !== 'undefined') lucide.createIcons();
   }).catch(() => toast('Fehler beim Laden', 'error'));
 }
 
 async function saveBackupSchedule(serverId) {
-  const enabled = document.getElementById('bs-enabled').checked ? 1 : 0;
-  const cron    = document.getElementById('bs-cron').value.trim();
-  const keep    = parseInt(document.getElementById('bs-keep').value) || 5;
-  const tmpl    = document.getElementById('bs-tmpl').value.trim() || 'Auto {date} {time}';
+  const enabled              = document.getElementById('bs-enabled')?.checked ? 1 : 0;
+  const cron                 = document.getElementById('bs-cron')?.value?.trim();
+  const keep                 = parseInt(document.getElementById('bs-keep')?.value) || 5;
+  const tmpl                 = document.getElementById('bs-tmpl')?.value?.trim() || 'Auto {date} {time}';
+  const notify_on_fail       = document.getElementById('bs-notify')?.checked ? 1 : 0;
+  const notify_email         = document.getElementById('bs-email')?.value?.trim() || '';
+  const backup_before_update = document.getElementById('bs-before-update')?.checked ? 1 : 0;
+  const errEl                = document.getElementById('bs-error');
+
+  if (cron && cron.split(/\s+/).length !== 5) {
+    errEl.textContent = 'Ungültiges Cron-Format (5 Felder: min h dom mon dow)';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  errEl.classList.add('hidden');
+
   try {
-    await API.put(`/servers/${serverId}/backups/schedule`, { enabled, cron, keep_count: keep, name_template: tmpl });
+    await API.put(`/servers/${serverId}/backups/schedule`, {
+      enabled, cron, keep_count: keep, name_template: tmpl,
+      notify_on_fail, notify_email, backup_before_update,
+    });
     toast(enabled ? 'Auto-Backup aktiviert' : 'Auto-Backup deaktiviert', 'success');
     closeModal();
     backupsInit(serverId);
-  } catch(e) { toast(e.message, 'error'); }
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+  }
 }
 
 async function runBackupScheduleNow(serverId) {
   try {
     await API.post(`/servers/${serverId}/backups/schedule/run`, {});
     toast('Backup wird erstellt…', 'success');
-    setTimeout(() => backupsInit(serverId), 2000);
+    setTimeout(() => backupsInit(serverId), 3000);
   } catch(e) { toast(e.message, 'error'); }
 }
+
 
 // ═══════════════════════════════════════════════════════════════
 // BROADCAST PAGE

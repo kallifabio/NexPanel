@@ -408,9 +408,9 @@ function modsRenderInstalledList(serverId, mods) {
     const hasUpd  = upd?.has_update;
     const isTrack = upd?.status === 'tracked';
     const badge = hasUpd
-      ? `<span style="background:rgba(251,191,36,.15);color:#d97706;border:1px solid rgba(251,191,36,.3);border-radius:10px;font-size:10px;padding:2px 7px;font-weight:600"><i data-lucide="arrow-up-circle" style="width:9px;height:9px"></i> Update</span>`
+      ? `<span style="background:rgba(251,191,36,.15);color:var(--warn);border:1px solid rgba(251,191,36,.3);border-radius:10px;font-size:10px;padding:2px 7px;font-weight:600"><i data-lucide="arrow-up-circle" style="width:9px;height:9px"></i> Update</span>`
       : isTrack
-        ? `<span style="background:rgba(34,197,94,.1);color:#16a34a;border-radius:10px;font-size:10px;padding:2px 7px"><i data-lucide="check" style="width:9px;height:9px"></i></span>`
+        ? `<span style="background:rgba(34,197,94,.1);color:var(--accent3);border-radius:10px;font-size:10px;padding:2px 7px"><i data-lucide="check" style="width:9px;height:9px"></i></span>`
         : '';
     return `
       <div class="installed-mod-row" style="${hasUpd?'background:rgba(251,191,36,.04);border-left:2px solid rgba(251,191,36,.4);':''}" >
@@ -424,13 +424,13 @@ function modsRenderInstalledList(serverId, mods) {
           </div>
           <div class="text-xs text-dim">
             ${isTrack ? `v${esc(upd.installed_version)} · ` : ''}${fmtBytes(m.size)} · ${esc(m.date)}
-            ${hasUpd ? `→ <span style="color:#d97706">v${esc(upd.latest?.version_number||'?')}</span>` : ''}
+            ${hasUpd ? `→ <span style="color:var(--warn)">v${esc(upd.latest?.version_number||'?')}</span>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:3px;flex-shrink:0">
           ${hasUpd ? `
-            <button class="btn btn-ghost btn-xs" style="color:#d97706" title="Changelog" onclick="modsShowChangelog('${serverId}','${esc(upd.project_id)}','${esc(upd.latest?.version_id||'')}','${esc(upd.project_title||m.name)}','${esc(upd.installed_version||'')}','${esc(upd.latest?.version_number||'')}')" ><i data-lucide="file-text"></i></button>
-            <button class="btn btn-ghost btn-xs" style="color:#d97706" title="Update" onclick="modsDoUpdate('${serverId}',${JSON.stringify(JSON.stringify(upd)).slice(1,-1).replace(/'/g,'&#39;')})" ><i data-lucide="download"></i></button>
+            <button class="btn btn-ghost btn-xs" style="color:var(--warn)" title="Changelog" onclick="modsShowChangelog('${serverId}','${esc(upd.project_id)}','${esc(upd.latest?.version_id||'')}','${esc(upd.project_title||m.name)}','${esc(upd.installed_version||'')}','${esc(upd.latest?.version_number||'')}')" ><i data-lucide="file-text"></i></button>
+            <button class="btn btn-ghost btn-xs" style="color:var(--warn)" title="Update" onclick="modsDoUpdate('${serverId}',${JSON.stringify(JSON.stringify(upd)).slice(1,-1).replace(/'/g,'&#39;')})" ><i data-lucide="download"></i></button>
           ` : ''}
           <button class="btn btn-ghost btn-xs text-danger" title="Entfernen"
             onclick="modsDelete('${serverId}','${esc(m.dir+'/'+m.name)}','${esc(m.name)}')" ><i data-lucide="trash-2"></i></button>
@@ -464,12 +464,12 @@ async function modsCheckUpdates(serverId) {
     if (bar) {
       if (upd > 0) {
         bar.innerHTML = `<div style="padding:8px 14px;display:flex;align-items:center;gap:10px;background:rgba(251,191,36,.06);border-bottom:1px solid rgba(251,191,36,.2)">
-          <i data-lucide="arrow-up-circle" style="width:14px;height:14px;color:#d97706;flex-shrink:0"></i>
-          <span style="flex:1;font-size:12px"><strong style="color:#d97706">${upd} Update${upd>1?'s':''}</strong> verfügbar für ${result.checked} erkannte Mods</span>
-          <button class="btn btn-sm" style="background:rgba(251,191,36,.2);color:#d97706;border:1px solid rgba(251,191,36,.3)" onclick="modsUpdateAll('${serverId}')"><i data-lucide="download"></i> Alle updaten</button>
+          <i data-lucide="arrow-up-circle" style="width:14px;height:14px;color:var(--warn);flex-shrink:0"></i>
+          <span style="flex:1;font-size:12px"><strong style="color:var(--warn)">${upd} Update${upd>1?'s':''}</strong> verfügbar für ${result.checked} erkannte Mods</span>
+          <button class="btn btn-sm" style="background:rgba(251,191,36,.2);color:var(--warn);border:1px solid rgba(251,191,36,.3)" onclick="modsUpdateAll('${serverId}')"><i data-lucide="download"></i> Alle updaten</button>
         </div>`;
       } else {
-        bar.innerHTML = `<div style="padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:12px;color:#16a34a;border-bottom:1px solid var(--color-border-tertiary)">
+        bar.innerHTML = `<div style="padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--accent3);border-bottom:1px solid var(--color-border-tertiary)">
           <i data-lucide="check-circle" style="width:13px;height:13px"></i>
           Alle ${result.checked} erkannten Mods sind aktuell. ${result.untracked > 0 ? `(${result.untracked} nicht auf Modrinth)` : ''}
         </div>`;
@@ -540,7 +540,7 @@ async function modsUpdateAll(serverId) {
     const total  = result.total || 0;
 
     if (bar) {
-      bar.innerHTML = `<div style="padding:8px 14px;font-size:12px;color:#16a34a;border-bottom:1px solid var(--color-border-tertiary)">
+      bar.innerHTML = `<div style="padding:8px 14px;font-size:12px;color:var(--accent3);border-bottom:1px solid var(--color-border-tertiary)">
         <i data-lucide="check-circle" style="width:12px;height:12px"></i> ${ok}/${total} Mods aktualisiert
       </div>`;
       if (window.lucide) lucide.createIcons();
@@ -567,7 +567,7 @@ async function modsShowChangelog(serverId, projectId, versionId, name, oldVer, n
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:12px">
       <span style="background:var(--color-background-secondary);padding:3px 9px;border-radius:12px;color:var(--color-text-tertiary)">v${esc(oldVer)}</span>
       <i data-lucide="arrow-right" style="width:12px;height:12px;color:var(--color-text-tertiary)"></i>
-      <span style="background:rgba(251,191,36,.15);color:#d97706;padding:3px 9px;border-radius:12px;font-weight:500">v${esc(newVer)}</span>
+      <span style="background:rgba(251,191,36,.15);color:var(--warn);padding:3px 9px;border-radius:12px;font-weight:500">v${esc(newVer)}</span>
     </div>
     <div id="changelog-content">
       <div class="empty"><div class="empty-icon spin"><i data-lucide="loader"></i></div></div>
@@ -690,14 +690,14 @@ async function modsShowUpdateLog(serverId) {
     el.innerHTML = `<div style="max-height:400px;overflow-y:auto">
       <table class="table" style="font-size:12px">
         <thead><tr>
-          <th>Mod</th><th>Alt</th><th style="color:#d97706">Neu</th><th>Status</th><th>Zeit</th>
+          <th>Mod</th><th>Alt</th><th style="color:var(--warn)">Neu</th><th>Status</th><th>Zeit</th>
         </tr></thead>
         <tbody>
           ${logs.map(l => `<tr>
             <td style="font-weight:500">${esc(l.mod_name)}</td>
             <td class="text-dim">${esc(l.old_version||'?')}</td>
-            <td style="color:#16a34a">${esc(l.new_version||'?')}</td>
-            <td><span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${l.status==='updated'?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)'};color:${l.status==='updated'?'#16a34a':'#ef4444'}">${esc(l.status)}</span></td>
+            <td style="color:var(--accent3)">${esc(l.new_version||'?')}</td>
+            <td><span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${l.status==='updated'?'rgba(34,197,94,.1)':'rgba(239,68,68,.1)'};color:${l.status==='updated'?'var(--accent3)':'#ef4444'}">${esc(l.status)}</span></td>
             <td class="text-dim">${new Date(l.updated_at).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</td>
           </tr>`).join('')}
         </tbody>
